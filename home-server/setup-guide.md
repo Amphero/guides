@@ -9,17 +9,6 @@ All names and IPs are examples: main server `192.168.0.10`, ML Pi
 `192.168.0.11`, users `anna` and `ben`. Final state:
 [current-setup.md](current-setup.md).
 
-1. [Boot from the SATA drive](#1-boot-from-the-sata-drive)
-2. [Base setup](#2-base-setup)
-3. [Samba](#3-samba)
-4. [Docker](#4-docker)
-5. [Paperless-ngx](#5-paperless-ngx)
-6. [Immich](#6-immich)
-7. [Second Pi: Immich ML](#7-second-pi-immich-ml)
-8. [Tailscale](#8-tailscale)
-9. [Maintenance](#9-maintenance)
-10. [Appendix: migrating existing data](#appendix-migrating-existing-data)
-
 ---
 
 ## 1. Boot from the SATA drive

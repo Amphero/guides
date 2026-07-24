@@ -6,17 +6,6 @@ are found via GPT partition types and labels (`root=gpt-auto`).
 
 Placeholders: `/dev/sdY` = target disk, `<SSID>`, `<USERNAME>`.
 
-1. [Live system](#1-live-system)
-2. [Partitioning](#2-partitioning)
-3. [Encrypt and format](#3-encrypt-and-format)
-4. [Mount and subvolumes](#4-mount-and-subvolumes)
-5. [Base system](#5-base-system)
-6. [Chroot](#6-chroot)
-7. [Bootloader (UKI)](#7-bootloader-uki)
-8. [Desktop](#8-desktop)
-9. [Finish](#9-finish)
-10. [Secure Boot and TPM2](#10-secure-boot-and-tpm2)
-
 ---
 
 ## 1. Live system
