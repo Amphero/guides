@@ -1,0 +1,19 @@
+# Immich machine learning, offloaded from the main server.
+# The image version must match the Immich server version on the main Pi
+# (there: IMMICH_VERSION in /srv/docker/immich/.env).
+name: immich-ml
+
+services:
+  immich-machine-learning:
+    container_name: immich_machine_learning
+    image: ghcr.io/immich-app/immich-machine-learning:v3
+    ports:
+      - '3003:3003'
+    volumes:
+      - ./model-cache:/cache
+    environment:
+      # Keep the CLIP text model in RAM permanently -> search responds instantly
+      MACHINE_LEARNING_PRELOAD__CLIP__TEXTUAL: ViT-B-32__openai
+      # Unload the other models (visual CLIP, faces) after 1h of idle
+      MACHINE_LEARNING_MODEL_TTL: "3600"
+    restart: unless-stopped
