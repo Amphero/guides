@@ -18,7 +18,7 @@ All names and IPs are examples: main server `192.168.0.10`, ML Pi
 7. [Second Pi: Immich ML](#7-second-pi-immich-ml)
 8. [Tailscale](#8-tailscale)
 9. [Maintenance](#9-maintenance)
-10. [Lessons learned](#lessons-learned)
+10. [Appendix: migrating existing data](#appendix-migrating-existing-data)
 
 ---
 
@@ -28,18 +28,38 @@ Once, with an SD card:
 
 1. Write Raspberry Pi OS Lite (64-bit) to the SD with the Raspberry Pi
    Imager. In the imager settings: hostname, SSH on, user + password.
-   After writing, check the boot partition for a filled-in `user-data`.
-   The Flatpak imager sometimes drops the settings
-   ([Lessons learned](#imager--first-boot)).
-2. Boot from SD, then:
+2. After writing, check the boot partition: is there a filled-in
+   `user-data`? The Flatpak imager sometimes drops the settings silently.
+   If so, create the user and enable SSH by hand, directly on the boot
+   partition:
+   ```bash
+   openssl passwd -6                        # generate a hash
+   echo 'anna:<HASH>' > userconf.txt
+   touch ssh
+   ```
+   (Trixie images use cloud-init. To force the first-boot setup to run
+   again, change `instance_id` in `meta-data`.)
+3. Boot from SD, then:
    ```bash
    sudo apt update && sudo apt full-upgrade -y
    sudo rpi-eeprom-update -a
    sudo reboot
    ```
-3. `sudo raspi-config`, then Advanced Options > Boot Order > USB Boot.
+4. `sudo raspi-config`, then Advanced Options > Boot Order > USB Boot.
 
-Then put the OS on the SATA drive. Either write it fresh with the imager
+Before trusting the USB-SATA bridge in the case, stress-test it. Cheap
+bridges (Innostor IS611) can crash the entire USB bus under load,
+including the system drive:
+
+```bash
+sudo dd if=/dev/sdX of=/dev/null bs=4M count=512 status=progress   # 2 GB read
+sudo dmesg | grep -icE "reset|i/o error"                           # 0 = stable
+```
+
+Stopgap for a flaky bridge: USB 2.0 port (~38 MB/s but stable). For
+permanent use only chips like ASM1153/JMS578.
+
+Now put the OS on the drive. Either write it fresh with the imager
 (cleanest), or clone the running SD system:
 
 ```bash
@@ -48,16 +68,29 @@ sudo cp rpi-clone/rpi-clone /usr/local/sbin/
 sudo rpi-clone -U sda
 ```
 
-Remove the SD, reboot, check with `lsblk` that `/` is on `sda2`. Keep the
-SD card as rescue system.
+If you partition the drive yourself: the Pi 4 bootloader only finds the
+FAT32 boot partition at the start of the disk (below ~1 TiB). At the end
+it fails, hybrid MBR or not.
 
-Troubleshooting:
+Remove the SD, reboot, check with `lsblk` that `/` is on `sda2`. What
+actually booted, if in doubt:
 
-- Drive not found at boot: `boot_delay=5` in `/boot/firmware/config.txt`.
-- USB hangs or I/O errors in `dmesg`: UAS quirk
-  ([Lessons learned](#booting-from-large-drives-pi-4)).
-- Before big copy jobs, stress-test the USB-SATA bridge. Cheap ones crash
-  the whole bus ([Lessons learned](#usb-sata-bridges-most-expensive-lesson)).
+```bash
+od -An -tu4 /proc/device-tree/chosen/bootloader/boot-mode
+# 67108864 = USB, 16777216 = SD
+```
+
+More stumbling blocks:
+
+- Drive not found at boot (HDD spin-up): `boot_delay=5` in
+  `/boot/firmware/config.txt`.
+- USB hangs or I/O errors in `dmesg`: UAS quirk. Get the IDs with `lsusb`
+  and prepend to the single line in `/boot/firmware/cmdline.txt`:
+  `usb-storage.quirks=152d:0578:u`
+- USB boot refuses entirely: keep the SD as kernel-only starter, with
+  `root=PARTUUID=<drive-partition>` in its `cmdline.txt`.
+
+Keep the SD card in the slot as rescue system.
 
 ## 2. Base setup
 
@@ -72,6 +105,12 @@ Auto-reboot on kernel updates, in `/etc/apt/apt.conf.d/50unattended-upgrades`:
 ```
 Unattended-Upgrade::Automatic-Reboot "true";
 Unattended-Upgrade::Automatic-Reboot-Time "04:00";
+```
+
+Persistent journal, so logs survive a crash reboot:
+
+```bash
+sudo mkdir -p /var/log/journal && sudo systemctl restart systemd-journald
 ```
 
 Fixed IP: DHCP reservation in the router, nothing on the Pi.
@@ -96,12 +135,23 @@ sudo chown ben:ben  /srv/backup/ben
 sudo chmod 700 /srv/backup/anna /srv/backup/ben
 ```
 
-Append to `/etc/samba/smb.conf` (`100.64.0.0/10` is Tailscale):
+In `/etc/samba/smb.conf`: Debian ships ghost shares that expose every user
+home and printer drivers, switch them off in the same edit. Append:
 
 ```ini
 [global]
    server min protocol = SMB3
    hosts allow = 192.168.0.0/24 100.64.0.0/10 127.0.0.1
+   load printers = no
+
+[homes]
+   available = no
+
+[printers]
+   available = no
+
+[print$]
+   available = no
 
 [backup-anna]
    path = /srv/backup/anna
@@ -114,8 +164,8 @@ Append to `/etc/samba/smb.conf` (`100.64.0.0/10` is Tailscale):
    read only = no
 ```
 
-Disable Debian's ghost shares while you're in there
-([Lessons learned](#samba-1)).
+(`100.64.0.0/10` is the Tailscale range. The share name in brackets is
+exactly what file managers display.)
 
 ```bash
 testparm
@@ -192,7 +242,9 @@ services:
       PAPERLESS_TIME_ZONE: Europe/Berlin
       PAPERLESS_OCR_LANGUAGE: deu
       PAPERLESS_URL: http://192.168.0.10:8000
-      PAPERLESS_ALLOWED_HOSTS: 192.168.0.10,localhost   # add Tailscale IP later, or HTTP 400
+      # ALLOWED_HOSTS needs every access path (LAN IP, Tailscale IP,
+      # hostname), missing ones answer HTTP 400:
+      PAPERLESS_ALLOWED_HOSTS: 192.168.0.10,localhost
       PAPERLESS_SECRET_KEY: change-me       # openssl rand -base64 48
       PAPERLESS_THREADS_PER_WORKER: 2       # 4 GB Pi: leave cores for the rest
       PAPERLESS_CONVERT_MEMORY_LIMIT: 64    # cap ImageMagick on big scans
@@ -221,7 +273,8 @@ wget -O docker-compose.yml.upstream https://github.com/immich-app/immich/release
 wget -O .env https://github.com/immich-app/immich/releases/latest/download/example.env
 ```
 
-`.env`:
+`.env` (set `DB_DATA_LOCATION`, or the database lands in the default
+location):
 
 ```
 UPLOAD_LOCATION=/srv/docker/immich/library
@@ -242,8 +295,18 @@ docker compose up -d
 
 Single-Pi setup: see the note in the script.
 
-Before the first phone upload: storage template on, existing photos as
-read-only external library ([Lessons learned](#immich-1)).
+Settings that must be right before the first phone upload, because they
+are painful to change later:
+
+- Storage template on (admin settings), e.g.
+  `{{y}}/{{MM}}/{{dd}}/{{y}}{{MM}}{{dd}}-{{filename}}`. Without it you get
+  UUID filenames. Avoid `{{album}}`, files move when albums change.
+- Existing photo collections: mount as read-only external library (the
+  transformer added the mount), do not import them. The folder structure
+  stays authoritative, no lock-in.
+- WebP collections: set the preview format to WebP (transparency).
+- The OCR job (new in v3) is a CPU hog, turn it off for a pure photo
+  archive.
 
 ## 7. Second Pi: Immich ML
 
@@ -251,7 +314,8 @@ ML results are stored in the main server's database; the ML container is
 stateless. On its own Pi, indexing doesn't fight the services for RAM.
 
 Setup: Raspberry Pi OS Lite (64-bit) on SD, hostname `pi-ml`, SSH on, DHCP
-reservation. Repeat step 2 (unattended-upgrades) and step 4 (Docker).
+reservation. Repeat step 2 (unattended-upgrades, journal) and step 4
+(Docker).
 
 ```bash
 sudo mkdir -p /srv/docker/immich-ml && sudo chown $USER: /srv/docker/immich-ml
@@ -269,7 +333,9 @@ curl http://localhost:3003/ping    # pong
 
 In the Immich admin settings under Machine Learning, set the URL to
 `http://192.168.0.11:3003`. Then run the missing jobs once, never "all"
-(that recomputes everything).
+(that recomputes everything, "missing" only processes what's new). The
+first indexing of a big archive takes days on a Pi. Let it run, it only
+happens once, and it happens over there.
 
 ### Update path from the main server
 
@@ -320,10 +386,15 @@ Admin console:
 
 - Disable key expiry, but only for the server. Clients re-auth in seconds;
   expiry is what removes a lost phone automatically.
-- MagicDNS on. Android's "Private DNS" overrides it, use the tailnet IP
-  there.
+- MagicDNS on. Android's "Private DNS" overrides it, so names won't
+  resolve on the phone: disable "Use Tailscale DNS" in the app and use the
+  tailnet IP.
 
-Clients: install the app, same account.
+Clients: install the app, same account. Linux desktop tips: KTailctl as
+GUI needs `flatpak override --user --filesystem=/run/tailscale
+org.fkoehler.KTailctl` and `sudo tailscale set --operator=$USER`. Mounting
+SMB through the tunnel wants `vers=3.1.1,sec=ntlmssp` (SMB 3.0 can throw
+"Operation not supported").
 
 ### Subnet router
 
@@ -346,9 +417,9 @@ The default policy is allow-all. With the subnet router, any tailnet
 device reaches the whole LAN.
 [`files/tailscale-acl.json`](files/tailscale-acl.json) restricts the phone
 to the three services; laptops keep full access. Adjust the IPs, paste
-into Access Controls. Copy the old policy somewhere first, there is no
-undo. Verify from the phone on mobile data: Immich works, the router page
-doesn't load anymore.
+into Access Controls. Copy the old policy somewhere first: the editor
+validates on save, but there is no undo. Verify from the phone on mobile
+data: Immich works, the router page doesn't load anymore.
 
 Under Settings > Device management, enable "Manually approve new devices".
 
@@ -383,102 +454,31 @@ cd /srv/docker/paperless && docker compose exec webserver document_exporter ../e
 ```
 
 Rollback: pin the previous image tag (`IMMICH_VERSION` in `.env`),
-`up -d`. Major upgrades that migrate the DB (Paperless 2 to 3) need a
-`pg_dump` from before, pinning doesn't undo a schema migration.
+`up -d`. Major upgrades that migrate the DB need a `pg_dump` from before,
+pinning doesn't undo a schema migration. Concrete example, Paperless 2 to
+3: only works from 2.20.15, needs `PAPERLESS_SECRET_KEY` and
+`PAPERLESS_DBENGINE` set, and rebuilds the search index on first start.
 
----
+## Appendix: migrating existing data
 
-## Lessons learned
+Only relevant when moving data from an old setup.
 
-### Imager & first boot
+Verify every copy before deleting the source (empty output = identical):
 
-- The Flatpak imager can silently drop SSH/user/hostname settings. Check
-  for a filled `user-data` on the boot partition. Fallback, directly on
-  bootfs:
-  ```bash
-  openssl passwd -6
-  echo 'anna:<HASH>' > userconf.txt
-  touch ssh
-  ```
-- Trixie images use cloud-init: change `instance_id` in `meta-data` to
-  force first-boot setup to run again.
+```bash
+sudo rsync -rnc --out-format='DIFF %n' /source/ /target/
+```
 
-### Booting from large drives (Pi 4)
+Large copies onto the system drive: stop the containers first
+(`docker compose stop`), that limits the damage if the USB bus flips.
 
-- The bootloader only boots GPT disks whose FAT32 boot partition sits at
-  the start of the disk (below ~1 TiB). At the end it fails, hybrid MBR
-  or not.
-- Fallback when USB boot refuses: SD card carries only the kernel,
-  `root=PARTUUID=<drive>` in its `cmdline.txt`.
-- What actually booted:
-  `od -An -tu4 /proc/device-tree/chosen/bootloader/boot-mode`
-  (67108864 = USB, 16777216 = SD).
+Paperless from an old instance: start the old stack (same Postgres
+version!) on a copy of the data, then `document_exporter`, then
+`document_importer` into a fresh instance. Users and passwords come along.
 
-### USB-SATA bridges (most expensive lesson)
-
-- Cheap bridges (Innostor IS611) can crash the entire USB bus under load,
-  including the system drive. Endless resets in `dmesg`. Test first:
-  ```bash
-  sudo dd if=/dev/sdX of=/dev/null bs=4M count=512 status=progress
-  sudo dmesg | grep -icE "reset|i/o error"   # 0 = stable
-  ```
-- Stopgap: USB 2.0 port (~38 MB/s but stable). For permanent use:
-  ASM1153/JMS578.
-- Stop containers before large copies onto the system drive.
-
-### Migration safety
-
-- Persistent journal before anything risky, or crash logs vanish on
-  reboot:
-  ```bash
-  sudo mkdir -p /var/log/journal && sudo systemctl restart systemd-journald
-  ```
-- Verify copies before destructive steps (empty output = identical):
-  ```bash
-  sudo rsync -rnc --out-format='DIFF %n' /source/ /target/
-  ```
-
-### Samba
-
-- Debian ships ghost shares: `available = no` under
-  `[homes]`/`[printers]`/`[print$]`, `load printers = no` in `[global]`.
-
-### Paperless-ngx
-
-- `PAPERLESS_ALLOWED_HOSTS` needs every access path (LAN IP, tailnet IP,
-  hostname), or HTTP 400.
-- Superuser: `run --rm`, not `exec`.
-- Migrating an instance: old stack (same Postgres version!) on a copy of
-  the data, `document_exporter`, then `document_importer` into a fresh
-  instance. Users and passwords come along.
-- The 2 to 3 upgrade: only from 2.20.15, needs `PAPERLESS_SECRET_KEY` and
-  `PAPERLESS_DBENGINE`, rebuilds the search index on first start.
-  `pg_dump` first, the migration is one-way.
-
-### Immich
-
-- Existing collections: read-only external library, not import.
-- Storage template before the first upload (e.g.
-  `{{y}}/{{MM}}/{{dd}}/{{y}}{{MM}}{{dd}}-{{filename}}`), or you get UUID
-  filenames. Avoid `{{album}}`, files move when albums change.
-- ML results live in the main DB, the ML container can be moved or
-  rebuilt freely. After changes run "missing" jobs, never "all".
-- First indexing of a big archive takes days on a Pi. Once.
-- WebP collections: preview format WebP. The v3 OCR job is a CPU hog,
-  turn it off for a photo archive.
-- Duplicates across formats (WebP vs JPG) escape checksums. Czkawka
-  "similar images" finds them, archive as reference folder. The locked
-  folder is fully walled off via API (401); DB workaround:
-  `UPDATE asset SET visibility='timeline' WHERE id IN (...)`, then delete
-  via API. Table `asset` (singular), column `"libraryId"`.
-
-### Tailscale
-
-- Android "Private DNS" kills MagicDNS names, use the tailnet IP.
-- Key expiry off only for the server.
-- KTailctl (Flatpak):
-  `flatpak override --user --filesystem=/run/tailscale org.fkoehler.KTailctl`
-  plus `sudo tailscale set --operator=$USER`.
-- SMB through the tunnel: `vers=3.1.1,sec=ntlmssp`.
-- The ACL editor validates on save but has no undo, copy the old policy
-  first.
+Immich duplicate hunting after mixed imports: exact checksums don't catch
+format differences (archive WebP vs phone JPG). Czkawka "similar images"
+does, with the archive as reference folder. The locked folder is walled
+off via API (401); workaround in the DB:
+`UPDATE asset SET visibility='timeline' WHERE id IN (...)`, then delete
+via API. The table is `asset` (singular), the column `"libraryId"`.
