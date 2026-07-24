@@ -1,7 +1,7 @@
 # guides
 
 Personal how-to guides, written while actually doing the thing. All names, IPs
-and passwords are examples — replace them with your own.
+and passwords are examples, replace them with your own.
 
 | Guide | What it covers |
 |---|---|

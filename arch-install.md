@@ -1,7 +1,7 @@
 # Arch Linux install
 
 Encrypted Arch with LUKS2 + Btrfs, unified kernel image, systemd-boot,
-Secure Boot with own keys, TPM2 auto-unlock, GNOME. No fstab — partitions
+Secure Boot with own keys, TPM2 auto-unlock, GNOME. No fstab, partitions
 are found via GPT partition types and labels (`root=gpt-auto`).
 
 Placeholders: `/dev/sdY` = target disk, `<SSID>`, `<USERNAME>`.
@@ -120,7 +120,7 @@ echo "root=gpt-auto rootflags=compress=zstd:1 rw"                > /mnt/etc/cmdl
 echo "quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3" > /mnt/etc/cmdline.d/10-silent-boot.conf
 echo "zswap.enabled=0"                                           > /mnt/etc/cmdline.d/20-disable-zswap.conf
 echo "mem_sleep_default=deep"                                    > /mnt/etc/cmdline.d/30-sleep-mode.conf
-# device-specific (here: InfinityBook 14 Pro v5) — adjust or drop:
+# device-specific (here: InfinityBook 14 Pro v5), adjust or drop:
 echo "psmouse.synaptics_intertouch=1 acpi_osi=Linux i915.enable_fbc=1 i915.enable_guc=2" > /mnt/etc/cmdline.d/30-device.conf
 ```
 
@@ -133,7 +133,7 @@ HOOKS=(base systemd autodetect microcode keyboard sd-vconsole modconf kms block 
 EOF
 ```
 
-Locale, timezone, hostname — interactively:
+Locale, timezone, hostname, interactively:
 
 ```bash
 systemd-firstboot --force --root=/mnt --setup-machine-id --prompt
@@ -151,7 +151,7 @@ passwd <USERNAME>
 
 ## 7. Bootloader (UKI)
 
-systemd-boot plus a unified kernel image — the kernel, initramfs and
+systemd-boot plus a unified kernel image, the kernel, initramfs and
 command line end up as one signed EFI binary:
 
 ```bash
@@ -196,7 +196,7 @@ systemctl reboot
 ## 10. Secure Boot and TPM2
 
 Secure Boot with own keys protects the boot chain; TPM2 then unlocks the
-disk automatically. The unlock is bound to the Secure Boot state — if that
+disk automatically. The unlock is bound to the Secure Boot state, if that
 changes, the LUKS passphrase is required at boot.
 
 ```bash

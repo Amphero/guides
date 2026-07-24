@@ -28,17 +28,18 @@ Once, with an SD card:
 
 1. Write Raspberry Pi OS Lite (64-bit) to the SD with the Raspberry Pi
    Imager. In the imager settings: hostname, SSH on, user + password.
-   After writing, check the boot partition for a filled-in `user-data` —
-   the Flatpak imager sometimes drops the settings ([Lessons learned](#imager--first-boot)).
+   After writing, check the boot partition for a filled-in `user-data`.
+   The Flatpak imager sometimes drops the settings
+   ([Lessons learned](#imager--first-boot)).
 2. Boot from SD, then:
    ```bash
    sudo apt update && sudo apt full-upgrade -y
    sudo rpi-eeprom-update -a
    sudo reboot
    ```
-3. `sudo raspi-config` → *Advanced Options* → *Boot Order* → **USB Boot**.
+3. `sudo raspi-config`, then Advanced Options > Boot Order > USB Boot.
 
-Then put the OS on the SATA drive — either write it fresh with the imager
+Then put the OS on the SATA drive. Either write it fresh with the imager
 (cleanest), or clone the running SD system:
 
 ```bash
@@ -52,9 +53,10 @@ SD card as rescue system.
 
 Troubleshooting:
 
-- Drive not found at boot → `boot_delay=5` in `/boot/firmware/config.txt`.
-- USB hangs / I/O errors in `dmesg` → UAS quirk ([Lessons learned](#booting-from-large-drives-pi-4)).
-- Before big copy jobs: stress-test the USB-SATA bridge — cheap ones crash
+- Drive not found at boot: `boot_delay=5` in `/boot/firmware/config.txt`.
+- USB hangs or I/O errors in `dmesg`: UAS quirk
+  ([Lessons learned](#booting-from-large-drives-pi-4)).
+- Before big copy jobs, stress-test the USB-SATA bridge. Cheap ones crash
   the whole bus ([Lessons learned](#usb-sata-bridges-most-expensive-lesson)).
 
 ## 2. Base setup
@@ -62,10 +64,10 @@ Troubleshooting:
 ```bash
 sudo apt update && sudo apt full-upgrade -y
 sudo apt install unattended-upgrades -y
-sudo dpkg-reconfigure -plow unattended-upgrades   # → Yes
+sudo dpkg-reconfigure -plow unattended-upgrades   # answer Yes
 ```
 
-Auto-reboot on kernel updates — `/etc/apt/apt.conf.d/50unattended-upgrades`:
+Auto-reboot on kernel updates, in `/etc/apt/apt.conf.d/50unattended-upgrades`:
 
 ```
 Unattended-Upgrade::Automatic-Reboot "true";
@@ -81,7 +83,7 @@ sudo mkdir -p /srv/docker/paperless /srv/docker/immich
 
 ## 3. Samba
 
-Samba users must exist as Linux users — nologin, no home:
+Samba users must exist as Linux users. Nologin without home is enough:
 
 ```bash
 sudo apt install samba -y
@@ -94,7 +96,7 @@ sudo chown ben:ben  /srv/backup/ben
 sudo chmod 700 /srv/backup/anna /srv/backup/ben
 ```
 
-Append to `/etc/samba/smb.conf` (`100.64.0.0/10` = Tailscale):
+Append to `/etc/samba/smb.conf` (`100.64.0.0/10` is Tailscale):
 
 ```ini
 [global]
@@ -112,7 +114,8 @@ Append to `/etc/samba/smb.conf` (`100.64.0.0/10` = Tailscale):
    read only = no
 ```
 
-Disable Debian's ghost shares while you're in there ([Lessons learned](#samba-1)).
+Disable Debian's ghost shares while you're in there
+([Lessons learned](#samba-1)).
 
 ```bash
 testparm
@@ -128,7 +131,7 @@ curl -fsSL https://get.docker.com | sudo sh
 sudo usermod -aG docker $USER    # re-login afterwards
 ```
 
-Log rotation, or container logs grow forever — `/etc/docker/daemon.json`:
+Log rotation, or container logs grow forever. `/etc/docker/daemon.json`:
 
 ```json
 {
@@ -137,7 +140,7 @@ Log rotation, or container logs grow forever — `/etc/docker/daemon.json`:
 }
 ```
 
-Memory cgroups are off by default (`docker stats` shows 0B) — append to the
+Memory cgroups are off by default (`docker stats` shows 0B). Append to the
 single line in `/boot/firmware/cmdline.txt`:
 
 ```
@@ -209,7 +212,7 @@ Files dropped into `consume/` get ingested automatically.
 
 ## 6. Immich
 
-Immich's compose file changes between releases — always work from the
+Immich's compose file changes between releases. Always work from the
 upstream file:
 
 ```bash
@@ -255,25 +258,25 @@ sudo mkdir -p /srv/docker/immich-ml && sudo chown $USER: /srv/docker/immich-ml
 ```
 
 Copy [`files/immich-ml-compose.yml`](files/immich-ml-compose.yml) there as
-`docker-compose.yml` — image tag = same major version as the server. The
-preload variable keeps the CLIP text model in RAM; without it the first
-search after idle waits 15–45 s.
+`docker-compose.yml`. The image tag must match the server's major version.
+The preload variable keeps the CLIP text model in RAM; without it the first
+search after idle waits 15-45 s.
 
 ```bash
 docker compose up -d
 curl http://localhost:3003/ping    # pong
 ```
 
-Immich admin settings → Machine Learning: URL `http://192.168.0.11:3003`.
-Then run the **missing** jobs once — never "all", that recomputes
-everything.
+In the Immich admin settings under Machine Learning, set the URL to
+`http://192.168.0.11:3003`. Then run the missing jobs once, never "all"
+(that recomputes everything).
 
 ### Update path from the main server
 
 The maintenance script (step 9) updates the ML Pi over SSH with a key that
 can only run one command.
 
-ML Pi — install [`files/ml-update.sh`](files/ml-update.sh):
+On the ML Pi, install [`files/ml-update.sh`](files/ml-update.sh):
 
 ```bash
 sudo install -o root -g root -m 755 ml-update.sh /usr/local/bin/ml-update.sh
@@ -282,21 +285,21 @@ sudo chmod 440 /etc/sudoers.d/ml-update
 sudo visudo -c
 ```
 
-Main server:
+On the main server:
 
 ```bash
 ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_mlpi_update -C 'main-to-mlpi-update'
 cat ~/.ssh/id_mlpi_update.pub
 ```
 
-ML Pi — add to `~/.ssh/authorized_keys` (forced command: no shell, no
-forwarding):
+Back on the ML Pi, add it to `~/.ssh/authorized_keys` with a forced
+command (no shell, no forwarding):
 
 ```
 restrict,command="sudo /usr/local/bin/ml-update.sh" ssh-ed25519 AAAA... main-to-mlpi-update
 ```
 
-Test from the main server — this must run the update script and nothing
+Test from the main server. This must run the update script and nothing
 else:
 
 ```bash
@@ -315,17 +318,17 @@ sudo tailscale up      # prints a login URL
 
 Admin console:
 
-- **Disable key expiry — server only.** Clients re-auth in seconds; expiry
-  is what removes a lost phone automatically.
-- MagicDNS on. Android's "Private DNS" overrides it — use the tailnet IP
+- Disable key expiry, but only for the server. Clients re-auth in seconds;
+  expiry is what removes a lost phone automatically.
+- MagicDNS on. Android's "Private DNS" overrides it, use the tailnet IP
   there.
 
 Clients: install the app, same account.
 
 ### Subnet router
 
-Makes the Pi's LAN IP work from anywhere — one server address in every
-app:
+Makes the Pi's LAN IP work from anywhere, so every app keeps one server
+address:
 
 ```bash
 echo 'net.ipv4.ip_forward = 1' | sudo tee /etc/sysctl.d/99-tailscale.conf
@@ -339,18 +342,18 @@ clients. Add the Pi's tailnet IP to `PAPERLESS_ALLOWED_HOSTS`.
 
 ### ACL and device approval
 
-Default policy is allow-all — with the subnet router, any tailnet device
-reaches the whole LAN.
+The default policy is allow-all. With the subnet router, any tailnet
+device reaches the whole LAN.
 [`files/tailscale-acl.json`](files/tailscale-acl.json) restricts the phone
 to the three services; laptops keep full access. Adjust the IPs, paste
-into *Access Controls*. **Copy the old policy first — there is no undo.**
-Verify from the phone on mobile data: Immich works, the router page
+into Access Controls. Copy the old policy somewhere first, there is no
+undo. Verify from the phone on mobile data: Immich works, the router page
 doesn't load anymore.
 
-*Settings → Device management*: enable "Manually approve new devices".
+Under Settings > Device management, enable "Manually approve new devices".
 
-Put MFA (best: a passkey) on the account behind the tailnet — it owns your
-LAN.
+Put MFA (best: a passkey) on the account behind the tailnet. That account
+owns your LAN.
 
 ## 9. Maintenance
 
@@ -365,7 +368,7 @@ ssh -t <user>@192.168.0.10 ./update-server.sh
 
 One run: apt on both Pis, SMART check, Paperless, Immich (upstream compose
 fetched and rebuilt, new `.env` variables listed), ML Pi, image prune,
-service probes. No Watchtower — Immich's compose changes between releases.
+service probes. No Watchtower, Immich's compose changes between releases.
 
 Backups: Immich dumps its DB nightly to `UPLOAD_LOCATION/backups/`; get
 documents and photos off the machine regularly (backup tool to an external
@@ -380,8 +383,8 @@ cd /srv/docker/paperless && docker compose exec webserver document_exporter ../e
 ```
 
 Rollback: pin the previous image tag (`IMMICH_VERSION` in `.env`),
-`up -d`. Major upgrades that migrate the DB (Paperless 2→3) need a
-`pg_dump` from before — pinning doesn't undo a schema migration.
+`up -d`. Major upgrades that migrate the DB (Paperless 2 to 3) need a
+`pg_dump` from before, pinning doesn't undo a schema migration.
 
 ---
 
@@ -403,8 +406,8 @@ Rollback: pin the previous image tag (`IMMICH_VERSION` in `.env`),
 ### Booting from large drives (Pi 4)
 
 - The bootloader only boots GPT disks whose FAT32 boot partition sits at
-  the **start** of the disk (below ~1 TiB). At the end it fails, hybrid
-  MBR or not.
+  the start of the disk (below ~1 TiB). At the end it fails, hybrid MBR
+  or not.
 - Fallback when USB boot refuses: SD card carries only the kernel,
   `root=PARTUUID=<drive>` in its `cmdline.txt`.
 - What actually booted:
@@ -413,7 +416,7 @@ Rollback: pin the previous image tag (`IMMICH_VERSION` in `.env`),
 
 ### USB-SATA bridges (most expensive lesson)
 
-- Cheap bridges (Innostor IS611) can crash the entire USB bus under load —
+- Cheap bridges (Innostor IS611) can crash the entire USB bus under load,
   including the system drive. Endless resets in `dmesg`. Test first:
   ```bash
   sudo dd if=/dev/sdX of=/dev/null bs=4M count=512 status=progress
@@ -425,7 +428,7 @@ Rollback: pin the previous image tag (`IMMICH_VERSION` in `.env`),
 
 ### Migration safety
 
-- Persistent journal **before** anything risky, or crash logs vanish on
+- Persistent journal before anything risky, or crash logs vanish on
   reboot:
   ```bash
   sudo mkdir -p /var/log/journal && sudo systemctl restart systemd-journald
@@ -445,37 +448,37 @@ Rollback: pin the previous image tag (`IMMICH_VERSION` in `.env`),
 - `PAPERLESS_ALLOWED_HOSTS` needs every access path (LAN IP, tailnet IP,
   hostname), or HTTP 400.
 - Superuser: `run --rm`, not `exec`.
-- Migrating an instance: old stack (same Postgres version!) on a **copy**
-  of the data, `document_exporter` → `document_importer` into a fresh
+- Migrating an instance: old stack (same Postgres version!) on a copy of
+  the data, `document_exporter`, then `document_importer` into a fresh
   instance. Users and passwords come along.
-- 2→3 upgrade: only from 2.20.15, needs `PAPERLESS_SECRET_KEY` and
+- The 2 to 3 upgrade: only from 2.20.15, needs `PAPERLESS_SECRET_KEY` and
   `PAPERLESS_DBENGINE`, rebuilds the search index on first start.
-  `pg_dump` first — the migration is one-way.
+  `pg_dump` first, the migration is one-way.
 
 ### Immich
 
 - Existing collections: read-only external library, not import.
-- Storage template **before** the first upload (e.g.
+- Storage template before the first upload (e.g.
   `{{y}}/{{MM}}/{{dd}}/{{y}}{{MM}}{{dd}}-{{filename}}`), or you get UUID
-  filenames. Avoid `{{album}}` — files move when albums change.
-- ML results live in the main DB — the ML container can be moved or
+  filenames. Avoid `{{album}}`, files move when albums change.
+- ML results live in the main DB, the ML container can be moved or
   rebuilt freely. After changes run "missing" jobs, never "all".
 - First indexing of a big archive takes days on a Pi. Once.
-- WebP collections: preview format WebP. The v3 OCR job is a CPU hog —
-  off for a photo archive.
-- Duplicates across formats (WebP ↔ JPG) escape checksums — Czkawka
-  "similar images", archive as reference folder. The locked folder is
-  fully walled off via API (401); DB workaround:
-  `UPDATE asset SET visibility='timeline' WHERE id IN (…)`, then delete
+- WebP collections: preview format WebP. The v3 OCR job is a CPU hog,
+  turn it off for a photo archive.
+- Duplicates across formats (WebP vs JPG) escape checksums. Czkawka
+  "similar images" finds them, archive as reference folder. The locked
+  folder is fully walled off via API (401); DB workaround:
+  `UPDATE asset SET visibility='timeline' WHERE id IN (...)`, then delete
   via API. Table `asset` (singular), column `"libraryId"`.
 
 ### Tailscale
 
-- Android "Private DNS" kills MagicDNS names — use the tailnet IP.
-- Key expiry off **only for the server**.
+- Android "Private DNS" kills MagicDNS names, use the tailnet IP.
+- Key expiry off only for the server.
 - KTailctl (Flatpak):
   `flatpak override --user --filesystem=/run/tailscale org.fkoehler.KTailctl`
   plus `sudo tailscale set --operator=$USER`.
 - SMB through the tunnel: `vers=3.1.1,sec=ntlmssp`.
-- The ACL editor validates on save but has no undo — copy the old policy
+- The ACL editor validates on save but has no undo, copy the old policy
   first.

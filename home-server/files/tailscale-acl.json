@@ -1,10 +1,10 @@
 // Tailscale ACL for a small home tailnet.
-// Names match the machine names in the admin console — adjust to yours.
+// Names match the machine names in the admin console, adjust to yours.
 // Idea: laptops get full access (administration), the phone only reaches
 // the three services on the main server, everything else is implicitly denied.
 // IMPORTANT: This only governs traffic THROUGH Tailscale (i.e. remote).
 // At home on WLAN, traffic goes directly over the LAN and is not affected.
-// Save your previous ACL before replacing it — the default is "allow all".
+// Save your previous ACL before replacing it, the default is "allow all".
 {
 	"hosts": {
 		"laptop-1": "100.101.1.20",
@@ -23,7 +23,7 @@
 		},
 
 		// Phone: only Immich (2283), Paperless (8000) and Samba (445)
-		// on the main server — reachable via both addresses.
+		// on the main server, reachable via both addresses.
 		// Router admin page, SSH and all other LAN devices: denied.
 		{
 			"action": "accept",
