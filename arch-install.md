@@ -203,3 +203,6 @@ run0 systemd-cryptenroll --tpm2-device=auto /dev/disk/by-partlabel/OS
 run0 nano /etc/crypttab.initramfs    # append: ... none tpm2-device=auto
 run0 mkinitcpio -P && systemctl reboot
 ```
+
+No hardware TPM in the machine? See
+[LUKS auto-unlock without a hardware TPM](swtpm-luks-autounlock.md).
