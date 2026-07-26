@@ -6,8 +6,7 @@ Immich's machine learning. Remote access via Tailscale. Maintenance is one
 command a month.
 
 All names and IPs are examples: main server `192.168.0.10`, ML Pi
-`192.168.0.11`, users `anna` and `ben`. Final state:
-[current-setup.md](current-setup.md).
+`192.168.0.11`, users `anna` and `ben`.
 
 ---
 
@@ -59,7 +58,10 @@ sudo rpi-clone -U sda
 
 If you partition the drive yourself: the Pi 4 bootloader only finds the
 FAT32 boot partition at the start of the disk (below ~1 TiB). At the end
-it fails, hybrid MBR or not.
+it fails, hybrid MBR or not. (The running server splits the SSD into a
+540 GB system partition and a 1.3 TB data partition at `/srv/data`; the
+imager's default two-partition layout with `/srv` on root works just as
+well.)
 
 Remove the SD, reboot, check with `lsblk` that `/` is on `sda2`. What
 actually booted, if in doubt:
@@ -402,13 +404,18 @@ clients. Add the Pi's tailnet IP to `PAPERLESS_ALLOWED_HOSTS`.
 
 ### ACL and device approval
 
-The default policy is allow-all. With the subnet router, any tailnet
-device reaches the whole LAN.
-[`files/tailscale-acl.json`](files/tailscale-acl.json) restricts the phone
-to the three services; laptops keep full access. Adjust the IPs, paste
-into Access Controls. Copy the old policy somewhere first: the editor
-validates on save, but there is no undo. Verify from the phone on mobile
-data: Immich works, the router page doesn't load anymore.
+The default policy is allow-all; with the subnet router that means every
+tailnet device reaches the whole LAN. Lock it down.
+
+An ACL has `hosts` (alias -> tailnet IP, from the admin console's Machines
+list) and `acls` (rules, `src` -> `dst:ports`). The moment you add a rule,
+the tailnet flips to deny-by-default, so you list only what should work.
+[`files/tailscale-acl.json`](files/tailscale-acl.json) is a template:
+laptops get `*:*`, the phone only ports 2283/8000/445 on the main server,
+the rest is denied. Swap in your names and IPs (use `groups` if you have
+many), paste into Access Controls. Save the old policy first, there is no
+undo. Verify from the phone on mobile data: Immich loads, the router page
+no longer does.
 
 Under Settings > Device management, enable "Manually approve new devices".
 
