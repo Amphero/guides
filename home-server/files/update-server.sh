@@ -56,4 +56,4 @@ check_url() { # name, url, expected code
 }
 check_url "Paperless:" "http://$MAIN_IP:8000/" 302
 check_url "Immich:   " "http://$MAIN_IP:2283/" 200
-curl -s -m 5 "http://${ML_PI#*@}:3003/ping" >/dev/null && echo "ML Pi:     pong" || echo "ML Pi:     NO ANSWER"
+check_url "ML Pi:    " "http://${ML_PI#*@}:3003/ping" 200
