@@ -20,8 +20,10 @@ ends exactly here):
   `sd-encrypt` hooks
 - Secure Boot active (e.g. via `sbctl`)
 - A pre-boot RNG. Normal UEFI firmware has one; coreboot needs the RngDxe
-  module in the payload, otherwise the swtpm state stays unencrypted and
-  the whole thing is pointless.
+  module in the payload (see
+  [custom-coreboot-t480](https://github.com/Amphero/custom-coreboot-t480)
+  for a T480 build that ships it), otherwise the swtpm state stays
+  unencrypted and the whole thing is pointless.
 
 Run everything as root.
 
