@@ -57,3 +57,13 @@ check_url() { # name, url, expected code
 check_url "Paperless:" "http://$MAIN_IP:8000/" 302
 check_url "Immich:   " "http://$MAIN_IP:2283/" 200
 check_url "ML Pi:    " "http://${ML_PI#*@}:3003/ping" 200
+
+# Immich soft-deletes offline external assets without setting status='trashed'.
+# Such rows are invisible to empty-trash and can crash the mobile sync
+# (updateAssetFacesV2), so flag them before the app does.
+stale=$(docker exec immich_postgres psql -U postgres -d immich -Atc \
+  "SELECT count(*) FROM asset WHERE \"deletedAt\" IS NOT NULL AND status = 'active';" 2>/dev/null || echo '?')
+[ "$stale" = "0" ] && echo "Immich DB:  trash consistent" || {
+  echo "Immich DB:  $stale inconsistent trash rows, fix with:"
+  echo "  docker exec immich_postgres psql -U postgres -d immich -c \"UPDATE asset SET status='trashed' WHERE \\\"deletedAt\\\" IS NOT NULL AND status='active';\""
+}
