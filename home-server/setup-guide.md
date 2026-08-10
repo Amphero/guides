@@ -435,7 +435,34 @@ ssh -t <user>@192.168.0.10 ./update-server.sh
 
 One run: apt on both Pis, SMART check, Paperless, Immich (upstream compose
 fetched and rebuilt, new `.env` variables listed), ML Pi, image prune,
-service probes. No Watchtower, Immich's compose changes between releases.
+service probes, trash cleanup. No Watchtower, Immich's compose changes
+between releases.
+
+### Trash that will not empty
+
+Rename or delete a file of an external library outside Immich and it sets
+`deletedAt` on the asset but leaves `status` at `'active'`. The row appears
+in the trash, but "empty trash" only touches `status='trashed'` and walks
+past it, so those rows survive every attempt and keep reappearing. They can
+also crash the mobile sync (`updateAssetFacesV2`). If such an asset is
+locked on top of that, the API refuses to hand it out, so it cannot be
+deleted that way either.
+
+[`files/immich-trash-cleanup.py`](files/immich-trash-cleanup.py) fixes both:
+it sets the rows to `trashed`, unlocks orphans so the API can reach them,
+then deletes through the API so thumbnails and database rows go as well.
+Nothing is unlocked or deleted unless the file is verifiably gone from disk,
+so a locked photo cannot be exposed or lost by accident.
+
+```bash
+cp files/immich-trash-cleanup.py ~/ && chmod +x ~/immich-trash-cleanup.py
+printf '%s' '<your-api-key>' > ~/.immich_api_key && chmod 600 ~/.immich_api_key
+./immich-trash-cleanup.py            # report
+./immich-trash-cleanup.py --purge    # clean up
+```
+
+`update-server.sh` calls it on every run, so this is handled by the monthly
+maintenance.
 
 Backups: Immich dumps its DB nightly to `UPLOAD_LOCATION/backups/`; get
 documents and photos off the machine regularly (backup tool to an external
