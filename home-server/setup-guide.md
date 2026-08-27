@@ -292,9 +292,10 @@ are painful to change later:
 - Storage template on (admin settings), e.g.
   `{{y}}/{{MM}}/{{dd}}/{{y}}{{MM}}{{dd}}-{{filename}}`. Without it you get
   UUID filenames. Avoid `{{album}}`, files move when albums change.
-- Existing photo collections: mount as read-only external library (the
-  transformer added the mount), do not import them. The folder structure
-  stays authoritative, no lock-in.
+- Existing photo collections: mount as external library (the transformer
+  added the mount), do not import them. The folder structure stays
+  authoritative, no lock-in. Writable, so deleting in the app removes the
+  file; use `:ro` in the transformer if the archive must stay untouched.
 - WebP collections: set the preview format to WebP (transparency).
 - The OCR job (new in v3) is a CPU hog, turn it off for a pure photo
   archive.

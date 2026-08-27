@@ -2,7 +2,7 @@
 """Rebuilds the upstream Immich compose file for this server:
 - removes the immich-machine-learning service (runs on a separate Pi)
 - removes the model-cache volume
-- adds the read-only external library mount
+- adds the external library mount
 - caps Postgres shared_buffers (image default 512MB is oversized here)
 
 Usage: transform-compose.py <upstream.yml> <target.yml>
@@ -14,7 +14,7 @@ import sys
 import yaml
 
 # ---- adjust to your setup -------------------------------------------------
-EXTERNAL_LIB = "/srv/photo-archive:/mnt/photos:ro"
+EXTERNAL_LIB = "/srv/photo-archive:/mnt/photos:rw"
 SHARED_BUFFERS = "256MB"
 ML_PI = "192.168.0.11:3003"  # only used in the generated header comment
 # ---------------------------------------------------------------------------
