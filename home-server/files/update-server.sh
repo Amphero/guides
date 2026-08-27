@@ -63,5 +63,5 @@ check_url "ML Pi:    " "http://${ML_PI#*@}:3003/ping" 200
 # even reachable through the API. immich-trash-cleanup.py fixes both and only
 # deletes what has no file on disk any more.
 echo "==== Immich trash ===="
-./immich-trash-cleanup.py --purge || echo "trash cleanup failed"
+"$HOME/immich-trash-cleanup.py" --purge || echo "trash cleanup failed"
 

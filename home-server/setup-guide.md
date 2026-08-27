@@ -458,8 +458,8 @@ so a locked photo cannot be exposed or lost by accident.
 ```bash
 cp files/immich-trash-cleanup.py ~/ && chmod +x ~/immich-trash-cleanup.py
 printf '%s' '<your-api-key>' > ~/.immich_api_key && chmod 600 ~/.immich_api_key
-./immich-trash-cleanup.py            # report
-./immich-trash-cleanup.py --purge    # clean up
+~/immich-trash-cleanup.py            # report
+~/immich-trash-cleanup.py --purge    # clean up
 ```
 
 `update-server.sh` calls it on every run, so this is handled by the monthly
