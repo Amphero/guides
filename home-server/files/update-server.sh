@@ -42,7 +42,11 @@ echo "==== 4/5 ML Pi (system + container) ===="
 ssh -i "$ML_KEY" -o BatchMode=yes "$ML_PI" update
 
 echo "==== 5/5 Cleanup, main server ===="
-docker image prune -f
+# -a, not plain prune: an image pinned by digest keeps its repository name and
+# only loses the tag when the pin moves on, so it is not "dangling" and plain
+# prune walks past it. Immich pins Postgres and Valkey that way, leaving one
+# behind on every update. until=720h keeps anything younger than 30 days.
+docker image prune -af --filter "until=720h"
 
 echo "==== Done. Quick check (waits up to 2 min for restarts): ===="
 check_url() { # name, url, expected code
