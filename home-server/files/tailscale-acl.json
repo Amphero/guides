@@ -1,7 +1,8 @@
 // Tailscale ACL for a small home tailnet.
 // Names and IPs are examples, adjust to yours.
 // Save your previous ACL before replacing it: the Tailscale default allows
-// everything, while a broken ACL locks everything out.
+// everything, while a broken ACL locks everything out. The default is in
+// tailscale-acl-default-original.json next to this file as a revert target.
 //
 // Idea: laptops get full access (administration), the phone reaches the
 // services on the main server plus the chat, shared guests reach only the

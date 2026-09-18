@@ -1,0 +1,19 @@
+// Tailscale's documented default policy: everything is allowed.
+//
+// Kept here as the revert target for tailscale-acl.json. Paste this back into
+// Access Controls and the tailnet behaves as it did before any ACL was set.
+//
+// Check this against your own tailnet before relying on it. Tailscale has
+// changed the shipped default over time, and a tailnet created later may
+// start with additional sections (for example "ssh"). If yours differs, save
+// your actual policy over this file - the point of this file is to be YOUR
+// revert target, not a generic one.
+{
+	"acls": [
+		{
+			"action": "accept",
+			"src":    ["*"],
+			"dst":    ["*:*"],
+		},
+	],
+}
