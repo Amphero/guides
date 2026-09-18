@@ -380,7 +380,11 @@ Admin console:
   expiry is what removes a lost phone automatically.
 - MagicDNS on. Android's "Private DNS" overrides it, so names won't
   resolve on the phone: disable "Use Tailscale DNS" in the app and use the
-  tailnet IP.
+  tailnet IP. (That works because every service here is addressed by IP and
+  port. A service that needs its MagicDNS name - anything behind
+  `tailscale serve`, see
+  [container with its own Tailscale node](container-tailscale-node.md) - needs
+  Tailscale DNS enabled on the phone instead.)
 
 Clients: install the app, same account. Linux desktop tips: KTailctl as
 GUI needs `flatpak override --user --filesystem=/run/tailscale
