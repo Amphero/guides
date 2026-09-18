@@ -1,0 +1,94 @@
+# Compose override that gives a service its own Tailscale node.
+# See ../container-tailscale-node.md for the reasoning and the pitfalls.
+#
+# Tailscale runs as a container; app and coturn share its network namespace.
+# Node sharing then exposes a node holding nothing but this service. No host
+# port is occupied.
+#
+# An override keeps the upstream docker-compose.yml untouched. A project's own
+# smoke test is unaffected as long as it passes its -f files explicitly.
+#
+# Names are examples: node "calc", app service "chat".
+
+services:
+  tailscale:
+    image: tailscale/tailscale:stable
+    container_name: chat_tailscale
+    hostname: calc
+    restart: unless-stopped
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:?TS_AUTHKEY missing in .env}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+      # Userspace mode only passes traffic proxied through "serve" into the
+      # namespace. The TURN ports stay unreachable and calls never connect.
+      TS_USERSPACE: "false"
+      TS_ACCEPT_DNS: "false"
+      # Debian 13 is nftables-only, the ip_tables module does not exist. The
+      # container ships legacy iptables and picks it by itself, then fails
+      # with "can't initialize iptables table filter". Needs the /lib/modules
+      # mount below as well.
+      TS_DEBUG_FIREWALL_MODE: nftables
+    volumes:
+      - ./tailscale/state:/var/lib/tailscale
+      - ./tailscale/serve.json:/config/serve.json:ro
+      - /lib/modules:/lib/modules:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - net_admin
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  chat:
+    container_name: chat_server
+    # network_mode: service: forbids published ports.
+    ports: !override []
+    network_mode: service:tailscale
+    depends_on:
+      - tailscale
+    environment:
+      # Without the port mapping nothing pins the server to loopback. The
+      # default ":8080" would also serve on the node's Tailscale address,
+      # unencrypted and without a secure context. This app's health check
+      # reads the same variable.
+      LISTEN: 127.0.0.1:8080
+      # A name, not an address: the Tailscale IP does not exist before the
+      # first start.
+      TURN_HOST: calc.<tailnet>.ts.net
+
+  coturn:
+    container_name: chat_coturn
+    # Instead of network_mode: host. Binds the container's Tailscale address.
+    network_mode: service:tailscale
+    depends_on:
+      - tailscale
+    command: !override
+      - --listening-ip=${TS_IP}
+      - --relay-ip=${TS_IP}
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=49200
+      - --lt-cred-mech
+      - --user=${TURN_USER}:${TURN_PASS}
+      - --realm=calc
+      - --fingerprint
+      # coturn 4.18 has no --no-dtls; it makes turnserver refuse to start.
+      # DTLS listeners do not come up without a certificate. --no-cli is
+      # deprecated, see --cli.
+      - --no-tls
+      - --no-multicast-peers
+      # 127/8 matters here because coturn shares the namespace with the app:
+      # without it the relay could point at 127.0.0.1:8080.
+      #
+      # The allowed range covers every tailnet address. What prevents relaying
+      # to other nodes is the ACL - no grant has this node as "src".
+      - --denied-peer-ip=10.0.0.0-10.255.255.255
+      - --denied-peer-ip=172.16.0.0-172.31.255.255
+      - --denied-peer-ip=192.168.0.0-192.168.255.255
+      - --denied-peer-ip=127.0.0.0-127.255.255.255
+      - --allowed-peer-ip=100.64.0.0-100.127.255.255
