@@ -185,7 +185,7 @@ Memory cgroups are off by default (`docker stats` shows 0B). Append to the
 single line in `/boot/firmware/cmdline.txt`:
 
 ```
-cgroup_enable=memory cgroup_memory=1
+cgroup_enable=memory
 ```
 
 Reboot.
@@ -197,16 +197,16 @@ Reboot.
 ```yaml
 services:
   broker:
-    image: docker.io/library/redis:7
+    image: docker.io/valkey/valkey:9-alpine
     restart: unless-stopped
     volumes:
       - redisdata:/data
 
   db:
-    image: docker.io/library/postgres:16
+    image: docker.io/library/postgres:18
     restart: unless-stopped
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql   # 18+: parent dir, not .../data
     environment:
       POSTGRES_DB: paperless
       POSTGRES_USER: paperless
@@ -251,6 +251,10 @@ docker compose up -d
 docker compose run --rm webserver createsuperuser   # run --rm, not exec
 ```
 
+Already running on `postgres:16`? Keep it, including the old
+`/var/lib/postgresql/data` mount. A major version jump needs a dump and
+restore, just changing the tag breaks the database.
+
 Files dropped into `consume/` get ingested automatically.
 
 ## 6. Immich
@@ -265,12 +269,12 @@ wget -O .env https://github.com/immich-app/immich/releases/latest/download/examp
 ```
 
 `.env` (set `DB_DATA_LOCATION`, or the database lands in the default
-location):
+location; `DB_PASSWORD` only letters and digits):
 
 ```
 UPLOAD_LOCATION=/srv/docker/immich/library
 DB_DATA_LOCATION=/srv/docker/immich/postgres
-DB_PASSWORD=change-me
+DB_PASSWORD=ChangeMe123
 TZ=Europe/Berlin
 ```
 
@@ -280,6 +284,7 @@ so they survive updates. Copy it to `/srv/docker/immich/`, adjust the
 constants at the top, then:
 
 ```bash
+sudo apt install python3-yaml
 python3 transform-compose.py docker-compose.yml.upstream docker-compose.yml
 docker compose up -d
 ```
@@ -297,7 +302,7 @@ are painful to change later:
   authoritative, no lock-in. Writable, so deleting in the app removes the
   file; use `:ro` in the transformer if the archive must stay untouched.
 - WebP collections: set the preview format to WebP (transparency).
-- The OCR job (new in v3) is a CPU hog, turn it off for a pure photo
+- The OCR job (since v2.2) is a CPU hog, turn it off for a pure photo
   archive.
 
 ## 7. Second Pi: Immich ML
@@ -381,10 +386,7 @@ Admin console:
 - MagicDNS on. Android's "Private DNS" overrides it, so names won't
   resolve on the phone: disable "Use Tailscale DNS" in the app and use the
   tailnet IP. (That works because every service here is addressed by IP and
-  port. A service that needs its MagicDNS name - anything behind
-  `tailscale serve`, see
-  [container with its own Tailscale node](container-tailscale-node.md) - needs
-  Tailscale DNS enabled on the phone instead.)
+  port.)
 
 Clients: install the app, same account. Linux desktop tips: KTailctl as
 GUI needs `flatpak override --user --filesystem=/run/tailscale
@@ -412,15 +414,18 @@ clients. Add the Pi's tailnet IP to `PAPERLESS_ALLOWED_HOSTS`.
 The default policy is allow-all; with the subnet router that means every
 tailnet device reaches the whole LAN. Lock it down.
 
-An ACL has `hosts` (alias -> tailnet IP, from the admin console's Machines
-list) and `acls` (rules, `src` -> `dst:ports`). The moment you add a rule,
-the tailnet flips to deny-by-default, so you list only what should work.
+The policy has `hosts` (alias -> tailnet IP, from the admin console's
+Machines list) and `grants` (rules: `src` may reach `dst` on the ports in
+`ip`). The moment there is a grant, the tailnet flips to deny-by-default,
+so you list only what should work.
 [`files/tailscale-acl.json`](files/tailscale-acl.json) is a template:
-laptops get `*:*`, the phone only ports 2283/8000/445 on the main server,
-the rest is denied. Swap in your names and IPs (use `groups` if you have
-many), paste into Access Controls. Save the old policy first, there is no
-undo. Verify from the phone on mobile data: Immich loads, the router page
-no longer does.
+laptops get everything, the phone only ports 2283/8000/445 on the main
+server, the rest is denied. Swap in your names and IPs (use `groups` if
+you have many), paste into Access Controls. Save the old policy first, there is no undo; the
+Tailscale default is in
+[`files/tailscale-acl-default-original.json`](files/tailscale-acl-default-original.json)
+as a revert target. Verify from the phone on mobile data: Immich loads,
+the router page no longer does.
 
 Under Settings > Device management, enable "Manually approve new devices".
 
