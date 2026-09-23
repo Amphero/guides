@@ -93,7 +93,7 @@ echo "[zram0]" > /mnt/etc/systemd/zram-generator.conf
 mkdir -p /mnt/etc/systemd/journald.conf.d
 cat > /mnt/etc/systemd/journald.conf.d/settings.conf <<EOF
 Storage=volatile
-SystemMaxUse=50M
+RuntimeMaxUse=50M
 EOF
 
 echo 'WIRELESS_REGDOM="DE"' >> /mnt/etc/conf.d/wireless-regdom
@@ -184,8 +184,8 @@ systemctl reboot
 ## 10. Secure Boot and TPM2
 
 Secure Boot with own keys protects the boot chain; TPM2 then unlocks the
-disk automatically. The unlock is bound to the Secure Boot state, if that
-changes, the LUKS passphrase is required at boot.
+disk automatically. The unlock is bound to the Secure Boot state (PCR 7),
+if that changes, the LUKS passphrase is required at boot.
 
 ```bash
 run0 sbctl enroll-keys -m    # -m keeps Microsoft keys; -t adds TPM eventlog
@@ -198,9 +198,19 @@ systemctl reboot --firmware-setup    # enable Secure Boot in the UEFI menu
 After the reboot, bind the LUKS slot to the TPM:
 
 ```bash
-run0 systemd-cryptenroll --tpm2-device=auto /dev/disk/by-partlabel/OS
+run0 systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7 /dev/disk/by-partlabel/OS
 run0 nano /etc/crypttab    # root entry: none x-initrd.attach,tpm2-device=auto
 run0 mkinitcpio -P && systemctl reboot
+```
+
+Don't drop `--tpm2-pcrs=7`: since systemd 258 the default is no PCRs at
+all, and then the TPM hands out the key even with Secure Boot turned off.
+A Secure Boot database update (e.g. dbx via fwupd) changes PCR 7. Enter
+the passphrase once, then re-enroll, as two separate commands:
+
+```bash
+run0 systemd-cryptenroll --wipe-slot=tpm2 /dev/disk/by-partlabel/OS
+run0 systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7 /dev/disk/by-partlabel/OS
 ```
 
 No hardware TPM in the machine? See

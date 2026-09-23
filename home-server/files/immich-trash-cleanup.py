@@ -31,7 +31,7 @@ Usage
   ./immich-trash-cleanup.py --purge   clean up
 
 Put your API key in ~/.immich_api_key (chmod 600). Create one in Immich
-under Account Settings -> API Keys.
+under Account Settings -> API Keys. Needs Immich >= 3.2 (search filter API).
 """
 
 import json
@@ -86,18 +86,20 @@ def file_gone(container_path):
 
 def trash_rows():
     """Collect every asset in the trash via the API."""
-    items, page = [], 1
+    items, cursor = [], None
     while True:
-        d = api("/api/search/metadata", "POST",
-                {"size": 1000, "page": page,
-                 "trashedAfter": "2000-01-01T00:00:00.000Z"})
+        query = {"size": 1000,
+                 "filter": {"trashedAt": {"gte": "2000-01-01T00:00:00.000Z"}}}
+        if cursor:
+            query["cursor"] = cursor
+        d = api("/api/search/metadata", "POST", query)
         if d is None:
             return items
         chunk = d["assets"]
         items += chunk["items"]
-        if not chunk.get("nextPage"):
+        cursor = chunk.get("nextCursor")
+        if not cursor:
             return items
-        page = int(chunk["nextPage"])
 
 
 def main():
