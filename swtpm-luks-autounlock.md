@@ -1,6 +1,6 @@
 # LUKS auto-unlock without a hardware TPM (swtpm)
 
-systemd 261 ships a software TPM (`systemd-tpm2-swtpm`) for machines
+systemd ships a software TPM (`systemd-tpm2-swtpm`) for machines
 without a hardware TPM. Its state lives AES-encrypted on the ESP, keyed by
 a boot secret that only the signed UKI can obtain in pre-boot. That is
 enough to auto-unlock LUKS at boot. The passphrase stays as fallback, and
@@ -15,7 +15,7 @@ are 0). systemd itself calls the feature a "lower-security fallback".
 Prerequisites, must already work (the [Arch install guide](arch-install.md)
 ends exactly here):
 
-- systemd >= 261
+- systemd >= 262 (261 has the swtpm too, but needs extra workarounds)
 - LUKS2 root, systemd-boot + UKI, mkinitcpio with the `systemd` and
   `sd-encrypt` hooks
 - Secure Boot active (e.g. via `sbctl`)
@@ -147,23 +147,6 @@ RequiresMountsFor=/efi/loader/swtpm
 EOF
 ```
 
-d) Transitional workaround for "Failed unmounting EFI System Partition
-(Early)" + "Connect failed" at boot. Fixed upstream in systemd PR #42944
-(merged 2026-07-09), so this disappears with a future systemd update. The
-one-liner checks that itself: it installs the workaround only while your
-systemd lacks the fix, and removes it again once the fix has arrived.
-Reboot after any reported change; "nothing to do" means nothing to do.
-
-```bash
-run0 bash -c 'set -e; u=/usr/lib/systemd/system/systemd-tpm2-swtpm.service; d=/etc/systemd/system/systemd-tpm2-swtpm.service.d/20-pr42944-initrd-stop.conf; m=/etc/mkinitcpio.conf.d/tpm2-swtpm.conf; if grep -q initrd-switch-root.target "$u"; then if [ -e "$d" ]; then rm "$d"; sed -i "/20-pr42944-initrd-stop/d" "$m"; systemctl daemon-reload; mkinitcpio -P; sbctl verify; echo "REMOVED: systemd now contains the fix itself, workaround reverted, please reboot"; else echo "OK: fix already in systemd, nothing to do"; fi; elif [ -e "$d" ]; then echo "OK: workaround already active (systemd lacks the fix)"; else printf "[Unit]\nConflicts=initrd-switch-root.target\nBefore=initrd-switch-root.target\n" | systemctl edit --stdin systemd-tpm2-swtpm.service --drop-in=20-pr42944-initrd-stop; echo "FILES+=($d)" >> "$m"; mkinitcpio -P; sbctl verify; echo "INSTALLED: workaround active, please reboot"; fi'
-```
-
-Check after the reboot (expected: `0`):
-
-```
-journalctl -b | grep -cE "Failed unmounting EFI System Partition \(Early\)|Connect failed"
-```
-
 ### 5. Build, sign, first reboot
 
 ```
@@ -192,15 +175,16 @@ nonexistent `tpmrm0` in the host. It asks for your LUKS passphrase. For
 laptops consider `--tpm2-with-pin=yes` (PIN instead of full automatic).
 Passphrase slot 0 stays either way.
 
-Then add `tpm2-device=auto` to your root entry in
-`/etc/crypttab.initramfs`:
+Then add `tpm2-device=auto` to the options of your root entry in
+`/etc/crypttab` (comma-separated, next to `x-initrd.attach`):
 
 ```
-root UUID=<your-luks-uuid> none tpm2-device=auto
+root UUID=<your-luks-uuid> none x-initrd.attach,tpm2-device=auto
 ```
 
-`auto` is right here: this file acts in the initrd, where the swtpm is the
-first TPM and the device is `tpmrm0`. Enrollment (host, tpmrm1) and unseal
+`auto` is right here: `x-initrd.attach` makes mkinitcpio copy this line
+into the initrd, and root is unlocked there, where the swtpm is the first
+TPM and the device is `tpmrm0`. Enrollment (host, tpmrm1) and unseal
 (initrd, tpmrm0) share the same state on the ESP, so they are compatible.
 
 ```
@@ -228,7 +212,8 @@ unlock).
    systemd-cryptenroll --wipe-slot=tpm2 /dev/disk/by-partlabel/OS
    systemd-cryptenroll /dev/disk/by-partlabel/OS   # must only show "0 password"
    ```
-2. Remove `tpm2-device=auto` from `/etc/crypttab.initramfs`.
+2. Remove `tpm2-device=auto` from the root entry in `/etc/crypttab`
+   (keep `x-initrd.attach`).
 3. Revert all systemd changes, one command:
    ```
    systemctl revert systemd-cryptsetup@.service tpm2.target systemd-tpm2-swtpm.service
@@ -286,6 +271,8 @@ via passphrase, as root:
    ls /sys/class/tpm/                     # a device again, no HMAC error
    systemd-cryptenroll --tpm2-device=list # note the device (tpmrm0 or tpmrm1)
    ```
+   Delete only these two files. The `.manufactured` marker must stay, or
+   the swtpm refuses to start in the host.
 3. Wipe the old token, then enroll fresh, as TWO separate commands:
    ```
    systemd-cryptenroll --wipe-slot=tpm2 /dev/disk/by-partlabel/OS

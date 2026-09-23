@@ -78,12 +78,11 @@ pacstrap -K /mnt \
   reflector wireless-regdb bash-completion nano
 ```
 
-Auto-unlock entry for the initramfs:
+Root entry in `/etc/crypttab`. `x-initrd.attach` makes mkinitcpio copy it
+into the initramfs, where root gets unlocked:
 
 ```bash
-cat > /mnt/etc/crypttab.initramfs <<EOF
-root UUID=$(lsblk -dno UUID /dev/disk/by-partlabel/OS) none
-EOF
+echo "root UUID=$(lsblk -dno UUID /dev/disk/by-partlabel/OS) none x-initrd.attach" >> /mnt/etc/crypttab
 ```
 
 zram as swap, journal in RAM, regulatory domain, resolved stub:
@@ -200,7 +199,7 @@ After the reboot, bind the LUKS slot to the TPM:
 
 ```bash
 run0 systemd-cryptenroll --tpm2-device=auto /dev/disk/by-partlabel/OS
-run0 nano /etc/crypttab.initramfs    # append: ... none tpm2-device=auto
+run0 nano /etc/crypttab    # root entry: none x-initrd.attach,tpm2-device=auto
 run0 mkinitcpio -P && systemctl reboot
 ```
 
