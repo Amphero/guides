@@ -169,7 +169,7 @@ pacman -S \
   systemd-{resolvconf,ukify} git
 
 systemctl enable gdm.service NetworkManager.service bluetooth.service \
-  cups.socket systemd-{oomd,boot-update,resolved}.service reflector.timer
+  cups.socket systemd-{oomd,boot-update,resolved,timesyncd}.service reflector.timer
 ```
 
 ## 9. Finish
