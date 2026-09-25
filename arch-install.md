@@ -92,6 +92,7 @@ echo "[zram0]" > /mnt/etc/systemd/zram-generator.conf
 
 mkdir -p /mnt/etc/systemd/journald.conf.d
 cat > /mnt/etc/systemd/journald.conf.d/settings.conf <<EOF
+[Journal]
 Storage=volatile
 RuntimeMaxUse=50M
 EOF
