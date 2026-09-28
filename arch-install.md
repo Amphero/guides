@@ -26,10 +26,11 @@ ping -c 1 archlinux.org
 
 ## 2. Partitioning
 
-Optionally wipe the disk first:
+Optionally discard the whole SSD first. Overwriting does not reliably
+erase flash (wear leveling), and LUKS goes on top anyway:
 
 ```bash
-shred -v -n 2 /dev/sdY
+blkdiscard -f /dev/sdY
 ```
 
 ESP + root, with GPT type codes so the system is auto-discoverable
@@ -59,14 +60,12 @@ mkfs.btrfs -L SPOOL /dev/mapper/root
 
 ## 4. Mount and subvolumes
 
-Subvolumes for the noisy paths, no copy-on-write there (`chattr +C`), plus
-one for the swap file:
+Subvolumes for the noisy paths and one for the swap file. Copy-on-write
+stays on, nodatacow would also drop checksums and compression:
 
 ```bash
 mount -L SPOOL -o compress=zstd:1,noatime /mnt
-for sv in var var/log var/cache var/tmp srv home swap; do
-  btrfs subvolume create /mnt/$sv && chattr +C /mnt/$sv
-done
+btrfs subvolume create /mnt/{var,var/log,var/cache,var/tmp,srv,home,swap}
 btrfs filesystem mkswapfile --size 16g /mnt/swap/swapfile    # about the RAM size
 mount -m -L ESP -o uid=0,gid=0,fmask=0077,dmask=0077 /mnt/efi
 ```
@@ -134,7 +133,7 @@ Initramfs hooks (systemd-based, `sd-encrypt` for LUKS):
 ```bash
 mkdir -p /mnt/etc/mkinitcpio.conf.d
 cat > /mnt/etc/mkinitcpio.conf.d/hooks.conf <<EOF
-HOOKS=(base systemd autodetect microcode keyboard sd-vconsole modconf kms block sd-encrypt filesystems fsck)
+HOOKS=(base systemd autodetect microcode keyboard sd-vconsole modconf kms block sd-encrypt filesystems)
 EOF
 ```
 
