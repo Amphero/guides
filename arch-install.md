@@ -59,13 +59,15 @@ mkfs.btrfs -L SPOOL /dev/mapper/root
 
 ## 4. Mount and subvolumes
 
-Subvolumes for the noisy paths, no copy-on-write there (`chattr +C`):
+Subvolumes for the noisy paths, no copy-on-write there (`chattr +C`), plus
+one for the swap file:
 
 ```bash
-mount -L SPOOL -o compress=zstd:1 /mnt
-for sv in var var/log var/cache var/tmp srv home; do
+mount -L SPOOL -o compress=zstd:1,noatime /mnt
+for sv in var var/log var/cache var/tmp srv home swap; do
   btrfs subvolume create /mnt/$sv && chattr +C /mnt/$sv
 done
+btrfs filesystem mkswapfile --size 16g /mnt/swap/swapfile    # about the RAM size
 mount -m -L ESP -o uid=0,gid=0,fmask=0077,dmask=0077 /mnt/efi
 ```
 
@@ -74,7 +76,7 @@ mount -m -L ESP -o uid=0,gid=0,fmask=0077,dmask=0077 /mnt/efi
 ```bash
 pacstrap -K /mnt \
   base linux linux-firmware intel-ucode \
-  btrfs-progs zram-generator sbctl tpm2-tss \
+  btrfs-progs sbctl tpm2-tss \
   reflector wireless-regdb bash-completion nano
 ```
 
@@ -85,10 +87,25 @@ into the initramfs, where root gets unlocked:
 echo "root UUID=$(lsblk -dno UUID /dev/disk/by-partlabel/OS) none x-initrd.attach" >> /mnt/etc/crypttab
 ```
 
-zram as swap, journal in RAM, regulatory domain, resolved stub:
+Swap is zswap: pages get compressed in RAM, the cold ones go to the swap
+file instead of the OOM killer. The swap file needs its own unit, there is
+no fstab. Then the journal in RAM, regulatory domain, resolved stub:
 
 ```bash
-echo "[zram0]" > /mnt/etc/systemd/zram-generator.conf
+cat > /mnt/etc/systemd/system/swap-swapfile.swap <<EOF
+[Swap]
+What=/swap/swapfile
+
+[Install]
+WantedBy=swap.target
+EOF
+
+mkdir -p /mnt/etc/sysctl.d
+cat > /mnt/etc/sysctl.d/99-zswap.conf <<EOF
+vm.swappiness = 133
+vm.watermark_scale_factor = 200
+vm.watermark_boost_factor = 0
+EOF
 
 mkdir -p /mnt/etc/systemd/journald.conf.d
 cat > /mnt/etc/systemd/journald.conf.d/settings.conf <<EOF
@@ -105,9 +122,8 @@ Kernel command line, split into `cmdline.d` snippets:
 
 ```bash
 mkdir -p /mnt/etc/cmdline.d
-echo "root=gpt-auto rootflags=compress=zstd:1 rw"                > /mnt/etc/cmdline.d/30-root.conf
+echo "root=gpt-auto rootflags=compress=zstd:1,noatime rw"        > /mnt/etc/cmdline.d/30-root.conf
 echo "quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3" > /mnt/etc/cmdline.d/10-silent-boot.conf
-echo "zswap.enabled=0"                                           > /mnt/etc/cmdline.d/20-disable-zswap.conf
 echo "mem_sleep_default=deep"                                    > /mnt/etc/cmdline.d/30-sleep-mode.conf
 # device-specific (here: InfinityBook 14 Pro v5), adjust or drop:
 echo "psmouse.synaptics_intertouch=1 retbleed=stuff acpi_osi=Linux i915.enable_guc=2" > /mnt/etc/cmdline.d/30-device.conf
@@ -170,7 +186,8 @@ pacman -S \
   systemd-{resolvconf,ukify} git
 
 systemctl enable gdm.service NetworkManager.service bluetooth.service \
-  cups.socket systemd-{oomd,boot-update,resolved,timesyncd}.service reflector.timer
+  cups.socket systemd-{oomd,boot-update,resolved,timesyncd}.service reflector.timer \
+  swap-swapfile.swap
 ```
 
 ## 9. Finish
