@@ -283,6 +283,67 @@ come out as `.pdf.pdf`.
 Never move or rename anything under `media/` by hand. Paperless remembers the
 last file name it used and reports the document as missing otherwise.
 
+### Weekly export into the share
+
+One export covers two needs: a backup `document_importer` can restore, and the
+documents as plain files in the Samba share, named by the format above. Mount
+the target folder into the container, next to the other volumes:
+
+```yaml
+      - /srv/data/data/anna/Dokumente/Akten:/usr/src/paperless/akten
+```
+
+Copy [`files/paperless-export.sh`](files/paperless-export.sh) and adjust the
+variables at the top. The container may still be starting when the timer fires
+after a reboot, so the script waits for it:
+
+```bash
+sudo install -o root -g root -m 755 paperless-export.sh /usr/local/bin/
+```
+
+```bash
+sudo tee /etc/systemd/system/paperless-export.service <<EOF
+[Unit]
+Description=Export the Paperless archive into the Akten folder
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/paperless-export.sh
+EOF
+
+sudo tee /etc/systemd/system/paperless-export.timer <<EOF
+[Unit]
+Description=Weekly Paperless export
+
+[Timer]
+OnCalendar=Sun 03:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now paperless-export.timer
+```
+
+Three things to know about the flags:
+
+- `--delete` removes everything in the target that isn't part of the current
+  export, recursively. Give it a folder of its own and keep nothing else in
+  there. Without it the folder collects a second file every time a document is
+  renamed.
+- `manifest.json` is the whole database, including the users and their password
+  hashes. That is what makes the export restorable, and the reason the share
+  must not be readable by anyone else.
+- `--no-thumbnail` keeps the folder browsable. After a restore the sanity
+  checker complains about the missing thumbnails until `document_thumbnails`
+  has run once.
+
+Roughly 300 documents take 35 s and 350 MB; later runs only copy what changed.
+
 ## 6. Immich
 
 Immich's compose file changes between releases. Always work from the
@@ -500,8 +561,9 @@ printf '%s' '<your-api-key>' > ~/.immich_api_key && chmod 600 ~/.immich_api_key
 `update-server.sh` calls it on every run, so this is handled by the monthly
 maintenance.
 
-Backups: Immich dumps its DB nightly to `UPLOAD_LOCATION/backups/`; get
-documents and photos off the machine regularly (backup tool to an external
+Backups: Immich dumps its DB nightly to `UPLOAD_LOCATION/backups/`, Paperless
+exports weekly through the timer from step 5. Both land on the same disk as the
+originals, so get them off the machine regularly (backup tool to an external
 drive, or rsync).
 
 Manual fallback:
