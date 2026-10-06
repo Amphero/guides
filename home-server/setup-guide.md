@@ -240,6 +240,7 @@ services:
       PAPERLESS_THREADS_PER_WORKER: 2       # 4 GB Pi: leave cores for the rest
       PAPERLESS_CONVERT_MEMORY_LIMIT: 64    # cap ImageMagick on big scans
       PAPERLESS_CONSUMER_DELETE_DUPLICATES: "true"  # v3 keeps duplicates by default
+      PAPERLESS_FILENAME_FORMAT: "{{ created }} - {{ correspondent }} - {{ title }}"
 
 volumes:
   pgdata:
@@ -256,6 +257,31 @@ Already running on `postgres:16`? Keep it, including the old
 restore, just changing the tag breaks the database.
 
 Files dropped into `consume/` get ingested automatically.
+
+### Readable file names
+
+Without `PAPERLESS_FILENAME_FORMAT` every document is stored as
+`media/documents/originals/0000123.pdf`. The format is a Jinja template, the
+one above produces `2025-06-30 - Liga Bank - Kontoauszug Nr. 006.pdf`. Leaving
+the document type out of it avoids names like `Quittung - Quittung`; the type
+is usually in the title already.
+
+New documents are named as they are ingested, existing ones are not. After
+changing the format, once:
+
+```bash
+docker compose exec -T webserver document_renamer
+docker compose exec -T webserver document_sanity_checker   # must report no issues
+```
+
+Sort out the metadata before renaming, the file name freezes whatever the
+database holds. Three things worth a look: a `created` that OCR picked from the
+wrong date in the document (a birth date on a certificate files it under 1993),
+titles still carrying the download name, and titles ending in `.pdf`, which
+come out as `.pdf.pdf`.
+
+Never move or rename anything under `media/` by hand. Paperless remembers the
+last file name it used and reports the document as missing otherwise.
 
 ## 6. Immich
 
