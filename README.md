@@ -10,3 +10,7 @@ and passwords are examples, replace them with your own.
 | [TLP on a coreboot ThinkPad T480](thinkpad-t480-tlp.md) | Hand-switched power profiles, two traps that cost real time, and the settings that do nothing on this board |
 | [HDMI audio on Philips TVs](pipewire-hdmi-tv-audio.md) | WirePlumber rule that pins the HDMI output to S16LE stereo |
 | [LUKS auto-unlock without a hardware TPM](swtpm-luks-autounlock.md) | systemd's software TPM (swtpm): encrypted state on the ESP, full revert path, recovery after firmware updates |
+
+The Arch, swtpm and TLP guides run on
+[coreboot-t480](https://github.com/Amphero/coreboot-t480), coreboot with an
+EDK2 UEFI payload for that machine.
