@@ -28,10 +28,10 @@ CPU_SCALING_GOVERNOR_ON_AC=powersave
 CPU_SCALING_GOVERNOR_ON_BAT=powersave
 CPU_SCALING_GOVERNOR_ON_SAV=powersave
 CPU_ENERGY_PERF_POLICY_ON_AC=performance
-CPU_ENERGY_PERF_POLICY_ON_BAT=balance_power
+CPU_ENERGY_PERF_POLICY_ON_BAT=balance_performance
 CPU_ENERGY_PERF_POLICY_ON_SAV=power
 CPU_HWP_DYN_BOOST_ON_AC=1
-CPU_HWP_DYN_BOOST_ON_BAT=0
+CPU_HWP_DYN_BOOST_ON_BAT=1
 CPU_HWP_DYN_BOOST_ON_SAV=0
 CPU_BOOST_ON_AC=1
 CPU_BOOST_ON_BAT=1
@@ -60,9 +60,10 @@ The suffixes are profile names, not power sources: `_ON_AC` is performance,
 
 `intel_pstate` runs active, where EPP does the throttling, so `powersave` plus
 EPP `performance` gives full turbo at a low idle draw. coreboot caps the board
-at PL1 15 W and PL2 18.75 W, so turbo only goes in power-saver. Wifi power
-saving costs 8 ms and triples the jitter on the QCNFA765 for 0.3-1 W. Both
-battery bays need their own thresholds.
+at PL1 15 W and PL2 18.75 W, so turbo stays on except in power-saver, race to
+idle beats throttling at limits that tight. Wifi power saving costs 8 ms and
+triples the jitter on the QCNFA765 for 0.3-1 W. Both battery bays need their
+own thresholds.
 
 No point adding `PCIE_ASPM`: coreboot sets up L1 plus substates on wifi and
 nvme but skips the Thunderbolt chain, and neither `powersupersave` nor
