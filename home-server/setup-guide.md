@@ -147,6 +147,81 @@ sudo reboot
 Then `ls /proc/pressure` shows `cpu io memory` and
 `systemctl is-active systemd-oomd` says `active`.
 
+### Swap: swap file with zswap
+
+Raspberry Pi OS sets up 2 GB of zram with writeback to `/var/swap`. That
+is the ceiling, and Immich reaches it. Instead: a 4 GB swap file on the SSD
+with zswap in front of it as compressed cache in RAM.
+
+Turn the distribution's swap setup off through its own switch
+(`swap.conf(5)`). A drop-in survives package updates, and `none` also
+removes `/var/swap` on the next boot:
+
+```bash
+sudo mkdir -p /etc/rpi/swap.conf.d
+printf '[Main]\nMechanism=none\n' | sudo tee /etc/rpi/swap.conf.d/90-own-swap.conf
+```
+
+Swap file:
+
+```bash
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+zswap, appended to the single line in `/boot/firmware/cmdline.txt`:
+
+```
+zswap.enabled=1 zswap.compressor=zstd zswap.max_pool_percent=20 zswap.shrinker_enabled=1
+```
+
+The compressor parameter does not take effect: zswap is built into the
+kernel, zstd is a module that cannot be loaded that early
+(`zswap: compressor zstd not available, using default lzo`). Set it after
+the modules are loaded, `/etc/systemd/system/zswap-zstd.service`:
+
+```ini
+[Unit]
+Description=Switch zswap to zstd
+After=systemd-modules-load.service
+ConditionPathExists=/sys/module/zswap/parameters/compressor
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/sbin/modprobe zstd
+ExecStart=/bin/sh -c 'echo zstd > /sys/module/zswap/parameters/compressor'
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+echo zstd | sudo tee /etc/modules-load.d/zstd.conf
+sudo systemctl enable zswap-zstd.service
+```
+
+Memory values, `/etc/sysctl.d/99-memory.conf`:
+
+```
+vm.swappiness = 133
+vm.watermark_scale_factor = 200
+vm.watermark_boost_factor = 0
+```
+
+`watermark_scale_factor` matters most: the kernel starts reclaiming memory
+early instead of under pressure (default 10). `swappiness = 133` because
+compressed pages in RAM are cheap.
+
+Reboot, then:
+
+```bash
+sudo swapon --show                            # only /swapfile, 4G
+cat /sys/module/zswap/parameters/compressor   # zstd
+```
+
 Fixed IP: DHCP reservation in the router, nothing on the Pi.
 
 ```bash
