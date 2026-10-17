@@ -319,6 +319,7 @@ services:
     restart: unless-stopped
     volumes:
       - redisdata:/data
+    mem_limit: 256m
 
   db:
     image: docker.io/library/postgres:18
@@ -329,6 +330,7 @@ services:
       POSTGRES_DB: paperless
       POSTGRES_USER: paperless
       POSTGRES_PASSWORD: paperless   # change
+    mem_limit: 512m
 
   webserver:
     image: ghcr.io/paperless-ngx/paperless-ngx:latest
@@ -338,6 +340,7 @@ services:
       - broker
     ports:
       - "8000:8000"
+    mem_limit: 1536m
     volumes:
       - ./data:/usr/src/paperless/data
       - ./media:/usr/src/paperless/media
@@ -369,6 +372,10 @@ volumes:
 docker compose up -d
 docker compose run --rm webserver createsuperuser   # run --rm, not exec
 ```
+
+The `mem_limit`s keep one container from taking the whole Pi down: it gets
+killed instead. Check with `docker inspect -f '{{.HostConfig.Memory}}' <name>`,
+0 means no limit.
 
 Already running on `postgres:16`? Keep it, including the old
 `/var/lib/postgresql/data` mount. A major version jump needs a dump and
@@ -423,7 +430,7 @@ TZ=Europe/Berlin
 ```
 
 Local compose changes (drop the ML service, add the external library,
-cap Postgres RAM) live in [`files/transform-compose.py`](files/transform-compose.py),
+cap Postgres RAM, memory limits per service) live in [`files/transform-compose.py`](files/transform-compose.py),
 so they survive updates. Copy it to `/srv/docker/immich/`, adjust the
 constants at the top, then:
 
