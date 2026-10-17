@@ -98,11 +98,23 @@ Unattended-Upgrade::Automatic-Reboot "true";
 Unattended-Upgrade::Automatic-Reboot-Time "04:00";
 ```
 
-Persistent journal, so logs survive a crash reboot:
+Persistent journal, so logs survive a crash reboot. Creating
+`/var/log/journal` is not enough on Raspberry Pi OS:
+`/usr/lib/systemd/journald.conf.d/40-rpi-volatile-storage.conf` sets
+`Storage=volatile`. A drop-in in `/etc` wins:
 
 ```bash
-sudo mkdir -p /var/log/journal && sudo systemctl restart systemd-journald
+sudo mkdir -p /etc/systemd/journald.conf.d
+sudo tee /etc/systemd/journald.conf.d/99-persistent.conf <<'EOF'
+[Journal]
+Storage=persistent
+SystemMaxUse=200M
+SystemMaxFileSize=20M
+EOF
+sudo systemctl restart systemd-journald && sudo journalctl --flush
 ```
+
+After the next reboot `journalctl --list-boots` lists more than one boot.
 
 Fixed IP: DHCP reservation in the router, nothing on the Pi.
 
