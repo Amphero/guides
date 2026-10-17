@@ -116,6 +116,37 @@ sudo systemctl restart systemd-journald && sudo journalctl --flush
 
 After the next reboot `journalctl --list-boots` lists more than one boot.
 
+### systemd-oomd
+
+Without it a full RAM freezes the whole Pi instead of killing one process.
+oomd needs PSI, which the Raspberry Pi kernel ships disabled
+(`/proc/pressure` is missing). Append `psi=1` to the single line in
+`/boot/firmware/cmdline.txt`, then:
+
+```bash
+sudo apt install systemd-oomd -y
+sudo mkdir -p /etc/systemd/oomd.conf.d
+sudo tee /etc/systemd/oomd.conf.d/99-local.conf <<'EOF'
+[OOM]
+SwapUsedLimit=90%
+DefaultMemoryPressureLimit=60%
+DefaultMemoryPressureDurationSec=20s
+EOF
+for s in system user; do
+  sudo mkdir -p /etc/systemd/system/$s.slice.d
+  sudo tee /etc/systemd/system/$s.slice.d/90-oomd.conf <<'EOF'
+[Slice]
+ManagedOOMSwap=kill
+ManagedOOMMemoryPressure=kill
+ManagedOOMMemoryPressureLimit=70%
+EOF
+done
+sudo reboot
+```
+
+Then `ls /proc/pressure` shows `cpu io memory` and
+`systemctl is-active systemd-oomd` says `active`.
+
 Fixed IP: DHCP reservation in the router, nothing on the Pi.
 
 ```bash
