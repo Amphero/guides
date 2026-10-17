@@ -4,6 +4,7 @@
 - removes the model-cache volume
 - adds the external library mount
 - caps Postgres shared_buffers (image default 512MB is oversized here)
+- sets memory limits per service
 
 Usage: transform-compose.py <upstream.yml> <target.yml>
 
@@ -17,6 +18,8 @@ import yaml
 EXTERNAL_LIB = "/srv/photo-archive:/mnt/photos:rw"
 SHARED_BUFFERS = "256MB"
 ML_PI = "192.168.0.11:3003"  # only used in the generated header comment
+# A container hitting its limit gets killed, not the whole Pi (4 GB RAM).
+MEM_LIMITS = {"immich-server": "1500m", "database": "768m", "redis": "256m"}
 # ---------------------------------------------------------------------------
 
 HEADER = (
@@ -64,6 +67,14 @@ if db is not None:
 else:
     print("WARNING: no database service found - shared_buffers not set",
           file=sys.stderr)
+
+for name, limit in MEM_LIMITS.items():
+    svc = services.get(name)
+    if svc is None:
+        print(f"WARNING: no {name} service found - no mem_limit set",
+              file=sys.stderr)
+    else:
+        svc["mem_limit"] = limit
 
 with open(dst, "w") as f:
     f.write(HEADER)
