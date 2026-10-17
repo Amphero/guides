@@ -7,6 +7,9 @@ services:
   immich-machine-learning:
     container_name: immich_machine_learning
     image: ghcr.io/immich-app/immich-machine-learning:v3
+    # Killed at the limit instead of the whole Pi; 2.5g is too tight once
+    # several models are loaded
+    mem_limit: 3g
     ports:
       - '3003:3003'
     volumes:

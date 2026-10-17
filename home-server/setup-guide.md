@@ -462,8 +462,32 @@ ML results are stored in the main server's database; the ML container is
 stateless. On its own Pi, indexing doesn't fight the services for RAM.
 
 Setup: Raspberry Pi OS Lite (64-bit) on SD, hostname `pi-ml`, SSH on, DHCP
-reservation. Repeat step 2 (unattended-upgrades, journal) and step 4
-(Docker).
+reservation. Repeat step 2 (unattended-upgrades, journal, systemd-oomd)
+and step 4 (Docker), but not the swap part: the root is on an SD card.
+
+Keep zram there, but without the writeback file `/var/swap` on the card.
+A swap file or zswap would write to the card, which is slow and wears it
+out. `Mechanism=zram` drops the writeback and removes `/var/swap` on the
+next boot:
+
+```bash
+sudo mkdir -p /etc/rpi/swap.conf.d
+printf '[Main]\nMechanism=zram\n' | sudo tee /etc/rpi/swap.conf.d/90-no-writeback.conf
+```
+
+After the reboot `cat /sys/block/zram0/backing_dev` says `none`. Leave
+`vm.swappiness` at 60: model weights in zram make every request slower.
+
+Smaller journal, written less often:
+
+```ini
+# /etc/systemd/journald.conf.d/99-persistent.conf
+[Journal]
+Storage=persistent
+SystemMaxUse=50M
+SystemMaxFileSize=10M
+SyncIntervalSec=5m
+```
 
 ```bash
 sudo mkdir -p /srv/docker/immich-ml && sudo chown $USER: /srv/docker/immich-ml
@@ -472,7 +496,7 @@ sudo mkdir -p /srv/docker/immich-ml && sudo chown $USER: /srv/docker/immich-ml
 Copy [`files/immich-ml-compose.yml`](files/immich-ml-compose.yml) there as
 `docker-compose.yml`. The image tag must match the server's major version.
 The preload variable keeps the CLIP text model in RAM; without it the first
-search after idle waits 15-45 s.
+search after idle waits 15-45 s. `mem_limit: 3g` leaves the system 700 MB.
 
 ```bash
 docker compose up -d
