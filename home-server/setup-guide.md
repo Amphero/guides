@@ -623,6 +623,42 @@ fetched and rebuilt, new `.env` variables listed), ML Pi, image prune,
 service probes, trash cleanup. No Watchtower, Immich's compose changes
 between releases.
 
+### Restarting both Pis
+
+[`files/restart-server.py`](files/restart-server.py) restarts the ML Pi,
+waits until it is back, then restarts the main server. Like the update path,
+it uses a key on the ML Pi that can only run one command.
+
+On the ML Pi:
+
+```bash
+echo 'pi-admin ALL=(root) NOPASSWD: /usr/bin/systemctl reboot' | sudo tee /etc/sudoers.d/ml-reboot
+sudo chmod 440 /etc/sudoers.d/ml-reboot
+sudo visudo -c
+```
+
+On the main server:
+
+```bash
+ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_mlpi_reboot -C 'main-to-mlpi-reboot'
+cp files/restart-server.py ~/ && chmod +x ~/restart-server.py
+```
+
+Add the public key to `~/.ssh/authorized_keys` on the ML Pi:
+
+```
+restrict,command="/usr/bin/sudo -n /usr/bin/systemctl reboot" ssh-ed25519 AAAA... main-to-mlpi-reboot
+```
+
+Every connection with this key reboots the ML Pi, whatever command is sent.
+For looking around, log in with the password.
+
+```bash
+~/restart-server.py --check      # state only
+~/restart-server.py              # both, asks first
+~/restart-server.py --ml-only    # or --here-only, --yes
+```
+
 ### Trash that will not empty
 
 Rename or delete a file of an external library outside Immich and it sets
