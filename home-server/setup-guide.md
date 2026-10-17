@@ -456,6 +456,13 @@ are painful to change later:
 - The OCR job (since v2.2) is a CPU hog, turn it off for a pure photo
   archive.
 
+A second external library in a folder that the main library excludes with
+an exclusion pattern: remove it in this order. Delete the library in Immich
+and wait until its assets are gone, delete the folder, only then drop the
+exclusion pattern. The other way round the next scan imports all its files
+into the main library. "Empty trash" does not get rid of them afterwards,
+see "Trash that will not empty" in step 9.
+
 ## 7. Second Pi: Immich ML
 
 ML results are stored in the main server's database; the ML container is
