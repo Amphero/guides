@@ -5,7 +5,7 @@
 // tailscale-acl-default-original.json next to this file as a revert target.
 //
 // Idea: laptops get full access (administration), the phone reaches the
-// services on the main server. Everything else is implicitly denied — once
+// services on the main server. Everything else is implicitly denied. Once
 // "grants" is set, the tailnet is default-deny.
 //
 // IMPORTANT: This only governs traffic THROUGH Tailscale. At home on WLAN,
