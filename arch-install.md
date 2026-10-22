@@ -178,16 +178,22 @@ echo "editor no" > /efi/loader/loader.conf
 
 ```bash
 pacman -S \
-  gnome gdm networkmanager power-profiles-daemon cups \
+  gnome gdm networkmanager tlp tlp-pd ethtool cups \
   pipewire-{pulse,jack,alsa,v4l2} gst-plugin-pipewire \
   gst-plugins-{good,bad,ugly} gst-libav gst-plugin-va \
   libde265 intel-media-driver alsa-utils \
   systemd-{resolvconf,ukify} git
 
+systemctl mask power-profiles-daemon systemd-rfkill.service systemd-rfkill.socket
 systemctl enable gdm.service NetworkManager.service bluetooth.service \
+  tlp.service tlp-pd.service \
   cups.socket systemd-{oomd,boot-update,resolved,timesyncd}.service reflector.timer \
   swap-swapfile.swap
 ```
+
+TLP instead of power-profiles-daemon, tlp-pd serves the power profile switch
+in GNOME and Plasma alike. Settings per machine in the
+[T480](thinkpad-t480-tlp.md) and [X270](thinkpad-x270-tlp.md) guides.
 
 ## 9. Finish
 
