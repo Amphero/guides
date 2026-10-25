@@ -88,7 +88,8 @@ echo "root UUID=$(lsblk -dno UUID /dev/disk/by-partlabel/OS) none x-initrd.attac
 
 Swap is zswap: pages get compressed in RAM, the cold ones go to the swap
 file instead of the OOM killer. The swap file needs its own unit, there is
-no fstab. Then the journal in RAM, regulatory domain, resolved stub:
+no fstab, and its size is fixed for good, see step 11. Then the journal in
+RAM, regulatory domain, resolved stub:
 
 ```bash
 cat > /mnt/etc/systemd/system/swap-swapfile.swap <<EOF
@@ -238,3 +239,13 @@ run0 systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7 /dev/disk/by-partlabel
 
 No hardware TPM in the machine? See
 [LUKS auto-unlock without a hardware TPM](swtpm-luks-autounlock.md).
+
+## 11. When the RAM changes
+
+Btrfs needs the swap file preallocated, so it keeps its size. This rebuilds it
+from `MemTotal`, and the `&&` chain stops before the `rm` if swap is still in
+use:
+
+```bash
+run0 bash -c 'systemctl stop swap-swapfile.swap && rm -f /swap/swapfile && btrfs filesystem mkswapfile --size $(( ($(grep -m1 MemTotal /proc/meminfo | tr -dc 0-9) + 1048575) / 1048576 ))g /swap/swapfile && systemctl start swap-swapfile.swap && swapon --show'
+```
