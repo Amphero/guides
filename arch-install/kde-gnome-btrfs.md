@@ -175,7 +175,7 @@ Flatpaks are per home. Either install them again in GNOME, or copy
 `~/.local/share/flatpak` with `cp -a --reflink=auto` into `home-gnome` and
 uninstall the KDE apps there.
 
-With the [software TPM](swtpm-luks-autounlock.md), both roots need the
+With the [software TPM](../swtpm-luks-autounlock.md), both roots need the
 `efi.automount` drop-in from step 4 d).
 
 ## 5. Update both systems

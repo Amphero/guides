@@ -12,8 +12,8 @@ lets it boot (set a PIN in step 6 for that). The protection comes from the
 state encryption, not from PCRs (a software TPM measures nothing, all PCRs
 are 0). systemd itself calls the feature a "lower-security fallback".
 
-Prerequisites, must already work (the [Arch install guide](arch-install.md)
-ends exactly here):
+Prerequisites, must already work (the
+[Arch install guide](arch-install/arch-install.md) ends exactly here):
 
 - systemd >= 262 (261 has the swtpm too, but needs extra workarounds)
 - LUKS2 root, systemd-boot + UKI, mkinitcpio with the `systemd` and
