@@ -10,6 +10,7 @@ and passwords are examples, replace them with your own.
 | [TLP on a coreboot ThinkPad T480](thinkpad-t480-tlp.md) | Power profiles switched from the GNOME menu via tlp-pd, CPU, wifi and charge threshold settings for both batteries |
 | [TLP on a ThinkPad X270](thinkpad-x270-tlp.md) | Power profiles switched from the Plasma tray via tlp-pd, CPU settings, runtime PM and USB autosuspend for Ethernet, wifi and the LTE modem |
 | [HDMI audio on Philips TVs](pipewire-hdmi-tv-audio.md) | WirePlumber rule that pins the HDMI output to S16LE stereo |
+| [KDE and GNOME on one Btrfs](kde-gnome-btrfs.md) | Two systems in their own subvolumes picked in the boot menu, separate homes, shared folders, pacman cache and swap, mounts via systemd.mount-extra instead of fstab, one update for both |
 | [LUKS auto-unlock without a hardware TPM](swtpm-luks-autounlock.md) | systemd's software TPM (swtpm): encrypted state on the ESP, full revert path, recovery after firmware updates |
 | [Ventoy USB stick](ventoy-usb/setup-guide.md) | One stick for Windows and Linux: Ventoy with hidden boot partition, LUKS partition, Debian Live with German keyboard, script for new Debian ISOs |
 
