@@ -68,12 +68,14 @@ systemd.mount-extra=$D:/swap:btrfs:subvol=/swap,noatime
 systemd.mount-extra=$D:/var/cache/pacman/pkg:btrfs:subvol=/pkg,noatime
 EOF
 for d in $DIRS; do
-  echo "systemd.mount-extra=$D:/home/<USERNAME>/$d:btrfs:subvol=/data/$d,noatime" >> /mnt/etc/cmdline.d/40-mounts.conf
+  echo "systemd.mount-extra=$D:/home/<USERNAME>/$d:btrfs:subvol=/data/$d,noatime,x-gvfs-hide" >> /mnt/etc/cmdline.d/40-mounts.conf
 done
 ```
 
 No `:` in the mount options. `compress=zstd:1` splits the entry and systemd
 drops it without an error, compression comes from the root mount anyway.
+`x-gvfs-hide` keeps GNOME from listing the shared folders as drives under
+Other Locations.
 
 Step 6 of the Arch install guide (chroot, user). Still in the chroot,
 step 7 with the UKI named after the system, these lines replace the preset
