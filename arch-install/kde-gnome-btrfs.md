@@ -1,11 +1,11 @@
 # KDE and GNOME side by side on one Btrfs
 
-Two Arch systems on one encrypted Btrfs, picked in the boot menu. Each has
-its own root and home, the XDG folders, the pacman cache and the swap file
-are shared. No fstab, every mount sits on the kernel command line inside the
-UKI of its system. Starts from a system installed with the
-[Arch install guide](arch-install.md) (here with KDE) and runs from that
-system, no live USB.
+Two Arch systems on one encrypted Btrfs, picked in the boot menu. A base
+system is installed once, then copied, and each copy gets its own desktop.
+Separate roots and homes, shared XDG folders, pacman cache and swap file.
+No fstab, every mount sits on the kernel command line inside the UKI of its
+system. Builds on the [Arch install guide](arch-install.md), steps that are
+the same there are only referenced.
 
 ```
 kde          / for KDE, var/log var/cache var/tmp srv nested
@@ -17,171 +17,194 @@ pkg          /var/cache/pacman/pkg
 swap         /swap
 ```
 
-Run everything as root. The top level is only mounted when needed:
+Placeholders as in the Arch guide. `DIRS` are the folders both systems
+share, named as xdg-user-dirs creates them for your locale:
 
 ```bash
-T=/run/toplevel DEV=/dev/disk/by-designator/root
-mkdir -p $T && mount -o subvolid=5,noatime $DEV $T
+DIRS="Bilder Dokumente Downloads Musik Projekte Videos"
 ```
-
-A snapshot shows nested subvolumes as empty placeholders that can't be
-written to. Replace them with `rmdir` before copying anything in.
 
 ---
 
-## 1. Move the running system into `kde`
+## 1. Live system, partitions, encryption
 
-Right before the reboot, changes to `/etc` and `/var` after the snapshot
-don't make it into `kde`. `/var` becomes part of the root, so the pacman
-database stays with `/usr`:
+Steps 1 to 3 of the Arch install guide.
+
+## 2. Subvolumes
 
 ```bash
-btrfs subvolume snapshot / /kde
-for d in var home swap; do rmdir /kde/$d; mkdir /kde/$d; chmod --reference=/$d /kde/$d; done
-cp -a --reflink=auto --one-file-system /var/. /kde/var/
-for d in log cache tmp lib/machines lib/portables; do rmdir /kde/var/$d 2>/dev/null; done
-for d in var/log var/cache var/tmp srv; do
-  [ -d /kde/$d ] && rmdir /kde/$d
-  btrfs subvolume create /kde/$d && chmod --reference=/$d /kde/$d
-  cp -a --reflink=auto --one-file-system /$d/. /kde/$d/
-done
-find /kde/var/cache/pacman/pkg -mindepth 1 -delete
-btrfs subvolume create /pkg
-cp -a --reflink=auto /var/cache/pacman/pkg/. /pkg/
+mount -L SPOOL -o compress=zstd:1,noatime /mnt
+btrfs subvolume create /mnt/{kde,home-kde,home-gnome,data,pkg,swap}
+mkdir -p /mnt/kde/var
+btrfs subvolume create /mnt/kde/{var/log,var/cache,var/tmp,srv}
+for d in $DIRS; do btrfs subvolume create /mnt/data/$d; done
+btrfs filesystem mkswapfile --size 16g /mnt/swap/swapfile    # about the RAM size
+umount /mnt
 ```
 
-Mounts, name in the boot menu, own UKI:
+Only `kde` gets installed, `gnome` is a copy of it later.
+
+## 3. Mount the KDE root
 
 ```bash
-echo "root=gpt-auto rootflags=subvol=/kde,compress=zstd:1,noatime rw" > /kde/etc/cmdline.d/30-root.conf
-cat > /kde/etc/cmdline.d/40-mounts.conf <<EOF
-systemd.mount-extra=$DEV:/home:btrfs:subvol=/home,noatime
-systemd.mount-extra=$DEV:/swap:btrfs:subvol=/swap,noatime
-systemd.mount-extra=$DEV:/var/cache/pacman/pkg:btrfs:subvol=/pkg,noatime
+mount -o subvol=/kde,compress=zstd:1,noatime /dev/mapper/root /mnt
+mount -m -o subvol=/home-kde,noatime /dev/mapper/root /mnt/home
+mount -m -o subvol=/pkg,noatime /dev/mapper/root /mnt/var/cache/pacman/pkg
+mount -m -L ESP -o uid=0,gid=0,fmask=0077,dmask=0077 /mnt/efi
+mkdir /mnt/swap
+```
+
+## 4. Base system
+
+Step 5 of the Arch install guide, except for the kernel command line. Root
+comes from `kde`, the other mounts from `40-mounts.conf`:
+
+```bash
+echo "root=gpt-auto rootflags=subvol=/kde,compress=zstd:1,noatime rw" > /mnt/etc/cmdline.d/30-root.conf
+D=/dev/disk/by-designator/root
+cat > /mnt/etc/cmdline.d/40-mounts.conf <<EOF
+systemd.mount-extra=$D:/home:btrfs:subvol=/home-kde,noatime
+systemd.mount-extra=$D:/swap:btrfs:subvol=/swap,noatime
+systemd.mount-extra=$D:/var/cache/pacman/pkg:btrfs:subvol=/pkg,noatime
 EOF
-sed 's/^PRETTY_NAME=.*/PRETTY_NAME="Arch Linux (KDE)"/' /usr/lib/os-release > /kde/etc/os-release-kde
-cat > /kde/etc/mkinitcpio.d/linux.preset <<'EOF'
+for d in $DIRS; do
+  echo "systemd.mount-extra=$D:/home/<USERNAME>/$d:btrfs:subvol=/data/$d,noatime" >> /mnt/etc/cmdline.d/40-mounts.conf
+done
+```
+
+No `:` in the mount options. `compress=zstd:1` splits the entry and systemd
+drops it without an error, compression comes from the root mount anyway.
+
+Step 6 of the Arch install guide (chroot, user). Still in the chroot,
+step 7 with the UKI named after the system, these lines replace the preset
+and `loader.conf` from there:
+
+```bash
+sed 's/^PRETTY_NAME=.*/PRETTY_NAME="Arch Linux (KDE)"/' /usr/lib/os-release > /etc/os-release-kde
+cat > /etc/mkinitcpio.d/linux.preset <<'EOF'
 ALL_kver="/boot/vmlinuz-linux"
 PRESETS=('default')
 default_uki="/efi/EFI/Linux/kde.efi"
 default_options="--osrelease /etc/os-release-kde"
 EOF
-systemd-nspawn -q -D /kde --bind=/efi mkinitcpio -P
 printf 'editor no\ndefault kde.efi\ntimeout 3\n' > /efi/loader/loader.conf
-bootctl set-default ""
-reboot
 ```
 
-No `:` in the mount options. `compress=zstd:1` splits the entry and systemd
-drops it without an error, compression comes from the root mount anyway.
-Check new lines before every reboot, each mount must show up:
+Step 8 without desktop and display manager, the rest is the same for both
+systems:
 
 ```bash
-G=$(mktemp -d) && mkdir $G/{n,e,l}
-SYSTEMD_PROC_CMDLINE="$(cat /kde/etc/cmdline.d/*.conf | tr '\n' ' ')" SYSTEMD_FSTAB=/dev/null \
-  /usr/lib/systemd/system-generators/systemd-fstab-generator $G/n $G/e $G/l
-ls $G/n/local-fs.target.requires/
+pacman -S networkmanager tlp tlp-pd ethtool cups flatpak \
+  pipewire-{pulse,jack,alsa,v4l2} gst-plugin-pipewire \
+  gst-plugins-{good,bad,ugly} gst-libav gst-plugin-va \
+  libde265 intel-media-driver alsa-utils \
+  systemd-{resolvconf,ukify} git
+systemctl mask power-profiles-daemon systemd-rfkill.service systemd-rfkill.socket
+systemctl enable NetworkManager.service bluetooth.service tlp.service tlp-pd.service \
+  cups.socket systemd-{oomd,boot-update,resolved,timesyncd}.service reflector.timer \
+  swap-swapfile.swap
+exit
 ```
 
-`bootctl set-default ""` clears an entry picked with `d` in the boot menu,
-it overrides `loader.conf`. The old `Default.efi` still boots the old system.
-
-## 2. Rename home, clear the top level
-
-Booted into `kde`:
+Mount points for the shared folders:
 
 ```bash
-mv $T/home $T/home-kde
-sed -i 's#subvol=/home,#subvol=/home-kde,#' /etc/cmdline.d/40-mounts.conf
-mkinitcpio -P && reboot
+U=$(awk -F: '$1=="<USERNAME>" {print $3}' /mnt/etc/passwd)
+for d in $DIRS; do install -d -o $U -g $U /mnt/home/<USERNAME>/$d; done
 ```
 
-After that boot, only `kde`, `home-kde`, `pkg` and `swap` stay:
+## 5. Copy the base to `gnome`
+
+A snapshot shows nested subvolumes as empty placeholders that can't be
+written to, replace them first:
 
 ```bash
-for s in var/lib/machines var/lib/portables var/log var/cache var/tmp var srv; do btrfs subvolume delete $T/$s; done
-for d in bin boot etc lib lib64 opt root sbin usr mnt dev proc run sys tmp efi; do rm -rf --one-file-system $T/$d; done
-rm /efi/EFI/Linux/Default.efi
-```
-
-## 3. Shared folders
-
-One subvolume per folder, mounted at the same path in both homes. Close
-the apps that use them first.
-
-```bash
-H=/home/<USERNAME>
-btrfs subvolume create $T/data
-for d in Bilder Videos Musik Dokumente Projekte Downloads; do
-  btrfs subvolume create $T/data/$d
-  chown --reference=$H/$d $T/data/$d && chmod --reference=$H/$d $T/data/$d
-  cp -a --reflink=auto --one-file-system $H/$d/. $T/data/$d/
-  diff -rq $H/$d $T/data/$d || break
-  mv $H/$d $H/.$d-old && mkdir $H/$d
-  chown --reference=$H/.$d-old $H/$d && chmod --reference=$H/.$d-old $H/$d
-  echo "systemd.mount-extra=$DEV:$H/$d:btrfs:subvol=/data/$d,noatime" >> /etc/cmdline.d/40-mounts.conf
-done
-mkinitcpio -P && reboot
-```
-
-Delete the `.*-old` folders once the mounts are there after the reboot.
-
-## 4. GNOME
-
-```bash
-G=$T/gnome
-btrfs subvolume snapshot $T/kde $G
-for d in var/lib/machines var/lib/portables var/log var/cache var/tmp srv; do rmdir $G/$d 2>/dev/null; done
+mount -m -o subvolid=5,noatime /dev/mapper/root /top
+btrfs subvolume snapshot /top/kde /top/gnome
 for d in var/log var/cache var/tmp srv; do
-  btrfs subvolume create $G/$d && chmod --reference=$T/kde/$d $G/$d
-  cp -a --reflink=auto --one-file-system $T/kde/$d/. $G/$d/
+  rmdir /top/gnome/$d
+  btrfs subvolume create /top/gnome/$d && chmod --reference=/top/kde/$d /top/gnome/$d
+  cp -a --reflink=auto --one-file-system /top/kde/$d/. /top/gnome/$d/
 done
 
-btrfs subvolume create $T/home-gnome
-install -d -m 700 -o <USERNAME> -g <USERNAME> $T/home-gnome/<USERNAME>
-for d in Bilder Videos Musik Dokumente Projekte Downloads .config; do
-  install -d -o <USERNAME> -g <USERNAME> $T/home-gnome/<USERNAME>/$d
-done
-cp -a $H/.config/user-dirs.{dirs,locale} $T/home-gnome/<USERNAME>/.config/
-
+G=/top/gnome
 echo "root=gpt-auto rootflags=subvol=/gnome,compress=zstd:1,noatime rw" > $G/etc/cmdline.d/30-root.conf
-sed 's#subvol=/home-kde,#subvol=/home-gnome,#' /etc/cmdline.d/40-mounts.conf > $G/etc/cmdline.d/40-mounts.conf
-rm $G/etc/os-release-kde
-sed 's/^PRETTY_NAME=.*/PRETTY_NAME="Arch Linux (GNOME)"/' /usr/lib/os-release > $G/etc/os-release-gnome
+sed -i 's#subvol=/home-kde,#subvol=/home-gnome,#' $G/etc/cmdline.d/40-mounts.conf
+mv $G/etc/os-release-kde $G/etc/os-release-gnome
+sed -i 's/(KDE)/(GNOME)/' $G/etc/os-release-gnome
 sed -i 's/kde/gnome/g' $G/etc/mkinitcpio.d/linux.preset
+
+install -d -m 700 -o $U -g $U /top/home-gnome/<USERNAME>
+for d in $DIRS; do install -d -o $U -g $U /top/home-gnome/<USERNAME>/$d; done
+umount /top
 ```
 
-Packages in a container. GNOME goes in first, so the KDE removal leaves
-everything GNOME needs. Look at `-Rsp` before removing:
+## 6. KDE desktop
 
 ```bash
-ns() { systemd-nspawn -q -D $G --bind=/efi --bind=/var/cache/pacman/pkg --pipe "$@"; }
-ns pacman -Syu --needed gdm gnome-shell gnome-session gnome-settings-daemon gnome-control-center \
+arch-chroot /mnt
+pacman -S plasma-desktop sddm bluedevil breeze-gtk discover kde-gtk-config kdeplasma-addons \
+  kgamma kinfocenter kscreen ksshaskpass kwallet-pam kwrited ocean-sound-theme plasma-disks \
+  plasma-nm plasma-pa plasma-thunderbolt plasma-welcome plasma-workspace-wallpapers powerdevil \
+  xdg-desktop-portal-kde flatpak-kcm konsole colord-kde dolphin dolphin-plugins drkonqi \
+  ffmpegthumbnailer ffmpegthumbs kdeconnect kdegraphics-thumbnailers kdenetwork-filesharing \
+  kdialog kio-admin kio-gdrive kio-zeroconf krdp kwin-x11 plasma-browser-integration \
+  plasma-keyboard plasma-vault plymouth-kcm print-manager wacomtablet
+systemctl enable sddm.service
+mkinitcpio -P
+exit
+umount -R /mnt
+```
+
+## 7. GNOME desktop
+
+```bash
+mount -o subvol=/gnome,compress=zstd:1,noatime /dev/mapper/root /mnt
+mount -o subvol=/home-gnome,noatime /dev/mapper/root /mnt/home
+mount -o subvol=/pkg,noatime /dev/mapper/root /mnt/var/cache/pacman/pkg
+mount -L ESP -o uid=0,gid=0,fmask=0077,dmask=0077 /mnt/efi
+arch-chroot /mnt
+pacman -S gdm gnome-shell gnome-session gnome-settings-daemon gnome-control-center \
   gnome-keyring gnome-menus gnome-backgrounds gnome-color-manager gnome-disk-utility gnome-software \
   gnome-console gnome-remote-desktop gnome-user-docs gnome-user-share nautilus yelp orca tecla \
   malcontent rygel grilo-plugins gvfs gvfs-{afc,dnssd,goa,gphoto2,mtp,nfs,onedrive,smb,wsdd} \
   xdg-desktop-portal-{gnome,gtk} xdg-user-dirs-gtk evolution-data-server ibus
-ns pacman -D --asexplicit bluez flatpak plymouth which xdg-user-dirs noto-fonts-emoji
-ns pacman -Rsp <KDE packages>
-systemctl --root=$G disable sddm.service
-ns pacman -Rns <KDE packages>
-systemctl --root=$G enable gdm.service
-rm -rf $G/etc/sddm.conf.d
-ns mkinitcpio -P
-systemctl reboot --boot-loader-entry=gnome.efi
+systemctl enable gdm.service
+mkinitcpio -P
+exit
+umount -R /mnt
+cryptsetup close root
+systemctl reboot
 ```
 
-Flatpaks are per home. Either install them again in GNOME, or copy
-`~/.local/share/flatpak` with `cp -a --reflink=auto` into `home-gnome` and
-uninstall the KDE apps there.
+The boot menu shows "Arch Linux (KDE)" and "Arch Linux (GNOME)", KDE is the
+default.
 
-With the [software TPM](../swtpm-luks-autounlock.md), both roots need the
-`efi.automount` drop-in from step 4 d).
+## 8. Secure Boot and TPM2
 
-## 5. Update both systems
+Step 10 of the Arch install guide, sign both UKIs instead of `Default.efi`:
 
-A pacman hook updates the other root after every upgrade, through the
-shared cache. In both roots:
+```bash
+run0 sbctl sign -s /efi/EFI/Linux/kde.efi
+run0 sbctl sign -s /efi/EFI/Linux/gnome.efi
+```
+
+The LUKS enrollment is done once. Change `/etc/crypttab` and run
+`mkinitcpio -P` in both systems. With the
+[software TPM](../swtpm-luks-autounlock.md), both systems need its part 1,
+including the `efi.automount` drop-in from step 4 d).
+
+The other system from the running one:
+
+```bash
+run0 mount -m -o subvolid=5,noatime /dev/disk/by-designator/root /run/toplevel
+run0 systemd-nspawn -D /run/toplevel/gnome --bind=/efi --bind=/var/cache/pacman/pkg
+```
+
+## 9. Update both systems
+
+A pacman hook updates the other system after every upgrade, through the
+shared cache. In both systems:
 
 ```bash
 cat > /etc/pacman.d/hooks/zz-update-other.hook <<'EOF'
@@ -213,5 +236,7 @@ EOF
 chmod 755 /usr/local/bin/update-other
 ```
 
-Inside the container the hook does nothing, so it doesn't loop. Flatpaks
-are updated per system.
+Inside the container the hook does nothing, so it doesn't loop.
+
+Flatpaks are installed per home and updated per system, each desktop only
+shows its own apps.
