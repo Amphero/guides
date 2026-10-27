@@ -106,7 +106,7 @@ HOOKS=(base systemd sd-tpm2-swtpm autodetect microcode keyboard sd-vconsole modc
 
 The swtpm runs twice: once in the initrd (becomes `tpm0`) and once in the
 host after switch-root (becomes `tpm1`, because `tpm0` is still taken).
-That handoff breaks three things which have to be fixed by hand. All three
+That handoff breaks three things, the ESP automount a fourth. All of them
 go through `systemctl edit`, so one `systemctl revert` undoes them later.
 
 a) cryptsetup must wait for the TPM device, or it races the swtpm in the
@@ -144,6 +144,18 @@ c) Clean shutdown, stop the swtpm before the ESP is unmounted:
 systemctl edit --stdin systemd-tpm2-swtpm.service --drop-in=10-efi-mount-order <<'EOF'
 [Unit]
 RequiresMountsFor=/efi/loader/swtpm
+EOF
+```
+
+d) The ESP is an automount with a 120 s idle timeout. Unmounting it stops
+the swtpm (c), and the swtpm needs the ESP to save its state. Both wait on
+each other and everything that touches `/efi` hangs, Flatpak apps included.
+Turn the idle unmount off:
+
+```bash
+systemctl edit --stdin efi.automount --drop-in=10-swtpm-holds-the-esp <<'EOF'
+[Automount]
+TimeoutIdleSec=0
 EOF
 ```
 
@@ -216,7 +228,7 @@ unlock).
    (keep `x-initrd.attach`).
 3. Revert all systemd changes, one command:
    ```
-   systemctl revert systemd-cryptsetup@.service tpm2.target systemd-tpm2-swtpm.service
+   systemctl revert systemd-cryptsetup@.service tpm2.target systemd-tpm2-swtpm.service efi.automount
    ```
 4. Delete the config files:
    ```
