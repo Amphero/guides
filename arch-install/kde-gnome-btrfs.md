@@ -151,8 +151,8 @@ pacman -S plasma-desktop plasma-login-manager bluedevil breeze-gtk discover kde-
   plasma-workspace-wallpapers powerdevil xdg-desktop-portal-kde flatpak-kcm konsole \
   colord-kde dolphin dolphin-plugins drkonqi ffmpegthumbnailer ffmpegthumbs kdeconnect \
   kdegraphics-thumbnailers kdenetwork-filesharing kdialog kio-admin kio-gdrive kio-zeroconf \
-  krdp kwin-x11 plasma-browser-integration plasma-keyboard plasma-vault plymouth-kcm \
-  print-manager wacomtablet
+  krdp plasma-browser-integration plasma-keyboard plasma-vault plymouth-kcm print-manager \
+  wacomtablet kate okular koko haruna kup
 systemctl enable plasmalogin.service
 mkinitcpio -P
 exit
