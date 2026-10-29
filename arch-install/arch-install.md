@@ -126,7 +126,7 @@ echo "root=gpt-auto rootflags=compress=zstd:1,noatime rw"        > /mnt/etc/cmdl
 echo "quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3" > /mnt/etc/cmdline.d/10-silent-boot.conf
 echo "mem_sleep_default=deep"                                    > /mnt/etc/cmdline.d/30-sleep-mode.conf
 # device-specific (here: InfinityBook 14 Pro v5), adjust or drop:
-echo "psmouse.synaptics_intertouch=1 retbleed=stuff acpi_osi=Linux i915.enable_guc=2" > /mnt/etc/cmdline.d/30-device.conf
+echo "psmouse.synaptics_intertouch=1 acpi_osi=Linux i915.enable_guc=2" > /mnt/etc/cmdline.d/30-device.conf
 ```
 
 Initramfs hooks (systemd-based, `sd-encrypt` for LUKS):
