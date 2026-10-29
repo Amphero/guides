@@ -46,6 +46,10 @@ Without TLP only the Ethernet controller and the wifi card sit at `on`, the
 other PCI devices and all USB devices are already at `auto`. TLP's defaults
 put those two at `auto` as well in balanced and power-saver.
 
+No measurable saving from that. On battery in balanced, idle, three
+alternating rounds of 60 s: 5.02 W without TLP's device settings, 5.02 W
+with them, no round apart by more than 0.03 W.
+
 No platform profile. Wifi power saving is on by default.
 
 No charge thresholds, the battery exposes none without the TUXEDO drivers.
