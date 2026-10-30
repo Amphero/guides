@@ -19,7 +19,7 @@ EXTERNAL_LIB = "/srv/photo-archive:/mnt/photos:rw"
 SHARED_BUFFERS = "256MB"
 ML_PI = "192.168.0.11:3003"  # only used in the generated header comment
 # A container hitting its limit gets killed, not the whole Pi (4 GB RAM).
-MEM_LIMITS = {"immich-server": "1500m", "database": "768m", "redis": "256m"}
+MEM_LIMITS = {"immich-server": "2500m", "database": "768m", "redis": "256m"}
 # ---------------------------------------------------------------------------
 
 HEADER = (
