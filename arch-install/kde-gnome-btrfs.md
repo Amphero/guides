@@ -245,3 +245,19 @@ Inside the container the hook does nothing, so it doesn't loop.
 
 Flatpaks are installed per home and updated per system, each desktop only
 shows its own apps.
+
+## 10. Search index in GNOME
+
+LocalSearch doesn't descend into mount points below `$HOME`, GNOME Music and
+the search don't see the shared folders. After the first GNOME login:
+
+```bash
+L="'&DESKTOP', '&TEMPLATES', '&PUBLIC_SHARE'"
+for d in $DIRS; do L="$L, '\$HOME/$d'"; done
+gsettings set org.freedesktop.Tracker3.Miner.Files index-recursive-directories "[$L]"
+gsettings set org.freedesktop.Tracker3.Miner.Files index-single-directories "['\$HOME']"
+localsearch reset -s
+```
+
+`$HOME` only non-recursive, otherwise the folders below it are dropped.
+Baloo in KDE indexes the mounts as is.
