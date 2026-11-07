@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly Immich update (server and ML Pi)
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+# the user that owns /srv/docker/immich and the ML key
+User=pi-admin
+ExecStart=/usr/local/bin/immich-update

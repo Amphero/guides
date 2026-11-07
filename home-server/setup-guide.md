@@ -644,6 +644,28 @@ fetched and rebuilt, new `.env` variables listed), ML Pi, image prune,
 service probes, trash cleanup. No Watchtower, Immich's compose changes
 between releases.
 
+### Weekly Immich update
+
+Monthly is too slow for Immich, it ships fixes often.
+[`files/immich-update`](files/immich-update) does the Immich step of
+`update-server.sh` on its own: fetch the upstream compose, run
+`transform-compose.py`, check the result with `docker compose config`
+(restores the backup if it is invalid), pull, `up -d`. Then it updates the
+ML Pi through the same restricted key, so both stay on one version, and
+checks that both answer.
+
+Adjust the variables at the top and `User=` in the service, then:
+
+```bash
+sudo install -m 755 files/immich-update /usr/local/bin/immich-update
+sudo install -m 644 files/immich-update.service files/immich-update.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now immich-update.timer
+```
+
+Runs Sundays at 03:00. The result is in `journalctl -u immich-update`, a
+failed run shows up in `systemctl --failed`.
+
 ### Restarting both Pis
 
 [`files/restart-server.py`](files/restart-server.py) restarts the ML Pi,

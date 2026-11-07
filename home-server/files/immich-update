@@ -1,0 +1,39 @@
+#!/bin/bash
+# Weekly Immich update: the server from the upstream compose, then the ML Pi,
+# so both stay on the same version. Same steps as update-server.sh.
+set -euo pipefail
+
+# ---- adjust to your setup -------------------------------------------------
+ML_PI="pi-admin@192.168.0.11"          # user@host of the ML Pi
+ML_KEY="$HOME/.ssh/id_mlpi_update"     # restricted key, see setup guide
+# ---------------------------------------------------------------------------
+
+version() { docker inspect -f '{{ index .Config.Labels "org.opencontainers.image.version" }}' immich_server 2>/dev/null || echo unknown; }
+
+cd /srv/docker/immich
+before=$(version)
+wget -qO docker-compose.yml.upstream https://github.com/immich-app/immich/releases/latest/download/docker-compose.yml
+wget -qO example.env.upstream https://github.com/immich-app/immich/releases/latest/download/example.env
+cp docker-compose.yml docker-compose.yml.bak
+python3 transform-compose.py docker-compose.yml.upstream docker-compose.yml
+if ! docker compose config >/dev/null; then
+    echo "generated compose is invalid, restoring the backup"
+    cp docker-compose.yml.bak docker-compose.yml
+    exit 1
+fi
+new=$(comm -23 <(grep -oE '^[A-Z_]+' example.env.upstream | sort -u) <(grep -oE '^[A-Z_]+' .env | sort -u) || true)
+[ -z "$new" ] || echo "new upstream variables, check .env: $new"
+docker compose pull --quiet
+docker compose up -d
+
+ssh -i "$ML_KEY" -o BatchMode=yes "$ML_PI" update
+
+code=000
+for _ in $(seq 24); do
+    code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:2283/api/server/ping) || true
+    [ "$code" = 200 ] && break
+    sleep 5
+done
+[ "$code" = 200 ] || { echo "Immich does not answer after the update (HTTP $code)"; exit 1; }
+curl -sf -o /dev/null "http://${ML_PI#*@}:3003/ping" || { echo "ML Pi does not answer"; exit 1; }
+echo "Immich $before -> $(version)"
