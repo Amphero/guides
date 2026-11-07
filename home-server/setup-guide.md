@@ -290,23 +290,37 @@ curl -fsSL https://get.docker.com | sudo sh
 sudo usermod -aG docker $USER    # re-login afterwards
 ```
 
-Log rotation, or container logs grow forever. `/etc/docker/daemon.json`:
+Log rotation, or container logs grow forever. `no-new-privileges` stops
+processes in a container from gaining rights through setuid binaries.
+`/etc/docker/daemon.json`:
 
 ```json
 {
   "log-driver": "json-file",
-  "log-opts": { "max-size": "10m", "max-file": "3" }
+  "log-opts": { "max-size": "10m", "max-file": "3" },
+  "no-new-privileges": true
 }
 ```
 
-Memory cgroups are off by default (`docker stats` shows 0B). Append to the
-single line in `/boot/firmware/cmdline.txt`:
+Memory cgroups are off by default (`docker stats` shows 0B), and so is
+AppArmor: the Raspberry Pi kernel has it built in, but only `capability`
+is active. With AppArmor on, Docker puts every container under its
+`docker-default` profile. Append to the single line in
+`/boot/firmware/cmdline.txt`:
 
 ```
-cgroup_enable=memory
+cgroup_enable=memory apparmor=1 security=apparmor
 ```
 
-Reboot.
+Reboot. Both settings apply to containers when they are created, so
+containers that already exist need `docker compose up -d --force-recreate`.
+Check:
+
+```bash
+cat /sys/kernel/security/lsm                                 # capability,apparmor
+docker inspect -f '{{.AppArmorProfile}}' <name>              # docker-default
+docker exec <name> grep NoNewPrivs /proc/1/status            # 1
+```
 
 ## 5. Paperless-ngx
 
