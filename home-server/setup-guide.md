@@ -605,6 +605,27 @@ sudo tailscale up --advertise-routes=192.168.0.0/24
 Approve the route in the admin console; enable "Use subnet routes" on the
 clients. Add the Pi's tailnet IP to `PAPERLESS_ALLOWED_HOSTS`.
 
+### Forwarding policy
+
+Docker only sets the FORWARD policy to DROP when it turns on IP
+forwarding itself. The sysctl above comes first, so the policy stays
+ACCEPT and any LAN device could route through the Pi. Tailscale wants
+forwarding denied by default. Its `ts-forward` chain and Docker's
+`DOCKER-FORWARD` accept their own traffic, so the policy only has to be
+set once both are up,
+[`files/forward-drop.service`](files/forward-drop.service):
+
+```bash
+sudo install -m644 files/forward-drop.service /etc/systemd/system/
+sudo systemctl enable --now forward-drop.service
+sudo iptables -S FORWARD | head -1      # -P FORWARD DROP
+sudo ip6tables -S FORWARD | head -1
+```
+
+`/etc/nftables.conf` is the wrong place: it starts with `flush ruleset`,
+which wipes the Docker and Tailscale rules, and a drop in a separate
+table cannot be undone by their accepts.
+
 ### ACL and device approval
 
 The default policy is allow-all; with the subnet router that means every

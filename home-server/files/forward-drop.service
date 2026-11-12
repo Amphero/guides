@@ -1,0 +1,12 @@
+[Unit]
+Description=Drop forwarded packets that Docker or Tailscale do not accept
+After=docker.service tailscaled.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/iptables -P FORWARD DROP
+ExecStart=/usr/sbin/ip6tables -P FORWARD DROP
+
+[Install]
+WantedBy=multi-user.target
