@@ -114,6 +114,10 @@ Storage=volatile
 RuntimeMaxUse=50M
 EOF
 
+# NT sync primitives for Wine/Proton, replaces esync/fsync
+mkdir -p /mnt/etc/modules-load.d
+echo ntsync > /mnt/etc/modules-load.d/ntsync.conf
+
 echo 'WIRELESS_REGDOM="DE"' >> /mnt/etc/conf.d/wireless-regdom
 ln -sf /run/systemd/resolve/stub-resolv.conf /mnt/etc/resolv.conf
 ```
