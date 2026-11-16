@@ -200,7 +200,7 @@ systemctl enable gdm.service NetworkManager.service bluetooth.service \
 
 TLP instead of power-profiles-daemon, tlp-pd serves the power profile switch
 in GNOME and Plasma alike. Settings per machine in the
-[T480](../tlp/thinkpad-t480-tlp.md) and [X270](../tlp/thinkpad-x270-tlp.md) guides.
+[T480](tlp/thinkpad-t480-tlp.md) and [X270](tlp/thinkpad-x270-tlp.md) guides.
 
 ## 9. Finish
 
@@ -244,7 +244,7 @@ run0 systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7 /dev/disk/by-partlabel
 ```
 
 No hardware TPM in the machine? See
-[LUKS auto-unlock without a hardware TPM](../swtpm-luks-autounlock.md).
+[LUKS auto-unlock without a hardware TPM](swtpm-luks-autounlock.md).
 
 ## 11. When the RAM changes
 

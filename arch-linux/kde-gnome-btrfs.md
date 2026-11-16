@@ -233,7 +233,7 @@ exit
 
 TLP instead of power-profiles-daemon, tlp-pd serves the power profile switch
 in GNOME and Plasma alike. Settings per machine in the
-[T480](../tlp/thinkpad-t480-tlp.md) and [X270](../tlp/thinkpad-x270-tlp.md) guides.
+[T480](tlp/thinkpad-t480-tlp.md) and [X270](tlp/thinkpad-x270-tlp.md) guides.
 
 Mount points for the shared folders:
 
@@ -345,7 +345,7 @@ run0 systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7 /dev/disk/by-partlabel
 ```
 
 No hardware TPM in the machine? With the
-[software TPM](../swtpm-luks-autounlock.md), both systems need its part 1,
+[software TPM](swtpm-luks-autounlock.md), both systems need its part 1,
 including the `efi.automount` drop-in from step 4 d).
 
 The other system from the running one:
