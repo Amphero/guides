@@ -86,10 +86,11 @@ into the initramfs, where root gets unlocked:
 echo "root UUID=$(lsblk -dno UUID /dev/disk/by-partlabel/OS) none x-initrd.attach" >> /mnt/etc/crypttab
 ```
 
-Swap is zswap: pages get compressed in RAM, the cold ones go to the swap
-file instead of the OOM killer. The swap file needs its own unit, there is
-no fstab, and its size is fixed for good, see step 11. Then the journal in
-RAM, regulatory domain, resolved stub:
+Swap is zswap as in GNOME OS: pages get compressed in RAM, up to 35% of it
+(`zswap.max_pool_percent` on the kernel command line), the cold ones go to
+the swap file instead of the OOM killer. The swap file needs its own unit,
+there is no fstab, and its size is fixed for good, see step 11. Then the
+journal in RAM, regulatory domain, resolved stub:
 
 ```bash
 cat > /mnt/etc/systemd/system/swap-swapfile.swap <<EOF
@@ -129,6 +130,7 @@ mkdir -p /mnt/etc/cmdline.d
 echo "root=gpt-auto rootflags=compress=zstd:1,noatime rw"        > /mnt/etc/cmdline.d/30-root.conf
 echo "quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3" > /mnt/etc/cmdline.d/10-silent-boot.conf
 echo "mem_sleep_default=deep"                                    > /mnt/etc/cmdline.d/30-sleep-mode.conf
+echo "zswap.max_pool_percent=35"                                 > /mnt/etc/cmdline.d/30-zswap.conf
 # device-specific (here: InfinityBook 14 Pro v5), adjust or drop:
 echo "psmouse.synaptics_intertouch=1 acpi_osi=Linux i915.enable_guc=2" > /mnt/etc/cmdline.d/30-device.conf
 ```
