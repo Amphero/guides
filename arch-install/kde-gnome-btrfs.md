@@ -4,8 +4,8 @@ Two Arch systems on one encrypted Btrfs, picked in the boot menu. A base
 system is installed once, then copied, and each copy gets its own desktop.
 Separate roots and homes, shared XDG folders, pacman cache and swap file.
 No fstab, every mount sits on the kernel command line inside the UKI of its
-system. Builds on the [Arch install guide](arch-install.md), steps that are
-the same there are only referenced.
+system. LUKS2, unified kernel images, systemd-boot, Secure Boot with own
+keys, TPM2 auto-unlock.
 
 ```
 kde          / for KDE, var/log var/cache var/tmp srv nested
@@ -17,8 +17,9 @@ pkg          /var/cache/pacman/pkg
 swap         /swap
 ```
 
-Placeholders as in the Arch guide. `DIRS` are the folders both systems
-share, named as xdg-user-dirs creates them for your locale:
+Placeholders: `/dev/sdY` = target disk, `<SSID>`, `<USERNAME>`. `DIRS` are
+the folders both systems share, named as xdg-user-dirs creates them for your
+locale:
 
 ```bash
 DIRS="Bilder Dokumente Downloads Musik Projekte Videos"
@@ -26,11 +27,53 @@ DIRS="Bilder Dokumente Downloads Musik Projekte Videos"
 
 ---
 
-## 1. Live system, partitions, encryption
+## 1. Live system
 
-Steps 1 to 3 of the Arch install guide.
+Write the ISO (device name via `lsblk`):
 
-## 2. Subvolumes
+```bash
+run0 dd bs=4M conv=fsync oflag=direct status=progress if=<ISO> of=/dev/sdY
+```
+
+German keymap and WLAN:
+
+```bash
+loadkeys de-latin1-nodeadkeys
+iwctl station wlan0 connect <SSID>
+ping -c 1 archlinux.org
+```
+
+## 2. Partitions and encryption
+
+Optionally discard the whole SSD first. Overwriting does not reliably
+erase flash (wear leveling), and LUKS goes on top anyway:
+
+```bash
+blkdiscard -f /dev/sdY
+```
+
+ESP + root, with GPT type codes so the system is auto-discoverable
+(`ef00` = ESP, `8304` = Linux root x86-64):
+
+```bash
+sgdisk -Z \
+  -n 1:0:+1G -t 1:ef00 -c 1:ESP \
+  -N 2 -t 2:8304 -c 2:OS \
+  /dev/sdY
+
+cryptsetup luksFormat /dev/disk/by-partlabel/OS
+cryptsetup \
+  --allow-discards \
+  --perf-no_read_workqueue \
+  --perf-no_write_workqueue \
+  --persistent \
+  open /dev/disk/by-partlabel/OS root
+
+mkfs.fat -F 32 -n ESP /dev/disk/by-partlabel/ESP
+mkfs.btrfs -L SPOOL /dev/mapper/root
+```
+
+## 3. Subvolumes
 
 ```bash
 mount -L SPOOL -o compress=zstd:1,noatime /mnt
@@ -44,7 +87,7 @@ umount /mnt
 
 Only `kde` gets installed, `gnome` is a copy of it later.
 
-## 3. Mount the KDE root
+## 4. Mount the KDE root
 
 ```bash
 mount -o subvol=/kde,compress=zstd:1,noatime /dev/mapper/root /mnt
@@ -54,13 +97,67 @@ mount -m -L ESP -o uid=0,gid=0,fmask=0077,dmask=0077 /mnt/efi
 mkdir /mnt/swap
 ```
 
-## 4. Base system
-
-Step 5 of the Arch install guide, except for the kernel command line. Root
-comes from `kde`, the other mounts from `40-mounts.conf`:
+## 5. Base system
 
 ```bash
+pacstrap -K /mnt \
+  base linux linux-firmware intel-ucode \
+  btrfs-progs sbctl tpm2-tss \
+  reflector wireless-regdb bash-completion nano
+```
+
+Root entry in `/etc/crypttab`. `x-initrd.attach` makes mkinitcpio copy it
+into the initramfs, where root gets unlocked:
+
+```bash
+echo "root UUID=$(lsblk -dno UUID /dev/disk/by-partlabel/OS) none x-initrd.attach" >> /mnt/etc/crypttab
+```
+
+Swap is zswap: pages get compressed in RAM, the cold ones go to the swap
+file instead of the OOM killer. The swap file needs its own unit, its size
+is fixed for good, see step 14. Then the journal in RAM, ntsync for
+Wine/Proton, regulatory domain, resolved stub:
+
+```bash
+cat > /mnt/etc/systemd/system/swap-swapfile.swap <<EOF
+[Swap]
+What=/swap/swapfile
+
+[Install]
+WantedBy=swap.target
+EOF
+
+mkdir -p /mnt/etc/sysctl.d
+cat > /mnt/etc/sysctl.d/99-zswap.conf <<EOF
+vm.swappiness = 133
+vm.watermark_scale_factor = 200
+vm.watermark_boost_factor = 0
+EOF
+
+mkdir -p /mnt/etc/systemd/journald.conf.d
+cat > /mnt/etc/systemd/journald.conf.d/settings.conf <<EOF
+[Journal]
+Storage=volatile
+RuntimeMaxUse=50M
+EOF
+
+mkdir -p /mnt/etc/modules-load.d
+echo ntsync > /mnt/etc/modules-load.d/ntsync.conf
+
+echo 'WIRELESS_REGDOM="DE"' >> /mnt/etc/conf.d/wireless-regdom
+ln -sf /run/systemd/resolve/stub-resolv.conf /mnt/etc/resolv.conf
+```
+
+Kernel command line, split into `cmdline.d` snippets. Root comes from `kde`,
+the other mounts from `40-mounts.conf`:
+
+```bash
+mkdir -p /mnt/etc/cmdline.d
 echo "root=gpt-auto rootflags=subvol=/kde,compress=zstd:1,noatime rw" > /mnt/etc/cmdline.d/30-root.conf
+echo "quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3" > /mnt/etc/cmdline.d/10-silent-boot.conf
+echo "mem_sleep_default=deep" > /mnt/etc/cmdline.d/30-sleep-mode.conf
+# device-specific (here: ThinkPad X270), adjust or drop:
+echo "psmouse.synaptics_intertouch=1" > /mnt/etc/cmdline.d/30-device.conf
 D=/dev/disk/by-designator/root
 cat > /mnt/etc/cmdline.d/40-mounts.conf <<EOF
 systemd.mount-extra=$D:/home:btrfs:subvol=/home-kde,noatime
@@ -79,11 +176,30 @@ Other Locations. GLib refuses to trash on subvolume mounts, Nautilus only
 offers to delete permanently there. `x-gvfs-trash` turns trash on, each
 folder gets its own hidden `.Trash-1000`, Nautilus shows them as one trash.
 
-Step 6 of the Arch install guide (chroot, user). Still in the chroot,
-step 7 with the UKI named after the system, these lines replace the preset
-and `loader.conf` from there:
+Initramfs hooks (systemd-based, `sd-encrypt` for LUKS), then locale,
+timezone and hostname interactively:
 
 ```bash
+mkdir -p /mnt/etc/mkinitcpio.conf.d
+cat > /mnt/etc/mkinitcpio.conf.d/hooks.conf <<EOF
+HOOKS=(base systemd autodetect microcode keyboard sd-vconsole modconf kms block sd-encrypt filesystems)
+EOF
+systemd-firstboot --force --root=/mnt --setup-machine-id --prompt
+```
+
+## 6. Chroot, user, bootloader
+
+systemd-boot plus a unified kernel image named after the system:
+
+```bash
+arch-chroot /mnt
+hwclock --systohc
+locale-gen
+useradd -mG wheel,http <USERNAME>
+passwd <USERNAME>
+
+bootctl install
+sbctl create-keys
 sed 's/^PRETTY_NAME=.*/PRETTY_NAME="Arch Linux (KDE)"/' /usr/lib/os-release > /etc/os-release-kde
 cat > /etc/mkinitcpio.d/linux.preset <<'EOF'
 ALL_kver="/boot/vmlinuz-linux"
@@ -91,11 +207,14 @@ PRESETS=('default')
 default_uki="/efi/EFI/Linux/kde.efi"
 default_options="--osrelease /etc/os-release-kde"
 EOF
+mkinitcpio -P
+rm /boot/initramfs*
 printf 'editor no\ndefault kde.efi\ntimeout 3\n' > /efi/loader/loader.conf
 ```
 
-Step 8 without desktop and display manager, the rest is the same for both
-systems:
+## 7. Common packages
+
+Everything without the desktop, the same for both systems:
 
 ```bash
 pacman -S networkmanager tlp tlp-pd ethtool cups flatpak \
@@ -110,6 +229,10 @@ systemctl enable NetworkManager.service bluetooth.service tlp.service tlp-pd.ser
 exit
 ```
 
+TLP instead of power-profiles-daemon, tlp-pd serves the power profile switch
+in GNOME and Plasma alike. Settings per machine in the
+[T480](../tlp/thinkpad-t480-tlp.md) and [X270](../tlp/thinkpad-x270-tlp.md) guides.
+
 Mount points for the shared folders:
 
 ```bash
@@ -117,7 +240,7 @@ U=$(awk -F: '$1=="<USERNAME>" {print $3}' /mnt/etc/passwd)
 for d in $DIRS; do install -d -o $U -g $U /mnt/home/<USERNAME>/$d; done
 ```
 
-## 5. Copy the base to `gnome`
+## 8. Copy the base to `gnome`
 
 A snapshot shows nested subvolumes as empty placeholders that can't be
 written to, replace them first:
@@ -143,7 +266,7 @@ for d in $DIRS; do install -d -o $U -g $U /top/home-gnome/<USERNAME>/$d; done
 umount /top
 ```
 
-## 6. KDE desktop
+## 9. KDE desktop
 
 ```bash
 arch-chroot /mnt
@@ -161,7 +284,7 @@ exit
 umount -R /mnt
 ```
 
-## 7. GNOME desktop
+## 10. GNOME desktop
 
 ```bash
 mount -o subvol=/gnome,compress=zstd:1,noatime /dev/mapper/root /mnt
@@ -185,17 +308,41 @@ systemctl reboot
 The boot menu shows "Arch Linux (KDE)" and "Arch Linux (GNOME)", KDE is the
 default.
 
-## 8. Secure Boot and TPM2
+## 11. Secure Boot and TPM2
 
-Step 10 of the Arch install guide, sign both UKIs instead of `Default.efi`:
+Secure Boot with own keys protects the boot chain; TPM2 then unlocks the
+disk automatically. The unlock is bound to the Secure Boot state (PCR 7),
+if that changes, the LUKS passphrase is required at boot. In KDE:
 
 ```bash
+run0 sbctl enroll-keys -m    # -m keeps Microsoft keys; -t adds TPM eventlog
+run0 sbctl sign -s /usr/lib/systemd/boot/efi/systemd-bootx64.efi -o /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed
 run0 sbctl sign -s /efi/EFI/Linux/kde.efi
 run0 sbctl sign -s /efi/EFI/Linux/gnome.efi
+run0 bootctl install
+systemctl reboot --firmware-setup    # enable Secure Boot in the UEFI menu
 ```
 
-The LUKS enrollment is done once. Change `/etc/crypttab` and run
-`mkinitcpio -P` in both systems. With the
+After the reboot, bind the LUKS slot to the TPM, once for both systems:
+
+```bash
+run0 systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7 /dev/disk/by-partlabel/OS
+```
+
+Then in both systems the root entry in `/etc/crypttab` becomes
+`none x-initrd.attach,tpm2-device=auto`, followed by `mkinitcpio -P`.
+
+Don't drop `--tpm2-pcrs=7`: since systemd 258 the default is no PCRs at
+all, and then the TPM hands out the key even with Secure Boot turned off.
+A Secure Boot database update (e.g. dbx via fwupd) changes PCR 7. Enter
+the passphrase once, then re-enroll, as two separate commands:
+
+```bash
+run0 systemd-cryptenroll --wipe-slot=tpm2 /dev/disk/by-partlabel/OS
+run0 systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7 /dev/disk/by-partlabel/OS
+```
+
+No hardware TPM in the machine? With the
 [software TPM](../swtpm-luks-autounlock.md), both systems need its part 1,
 including the `efi.automount` drop-in from step 4 d).
 
@@ -206,7 +353,7 @@ run0 mount -m -o subvolid=5,noatime /dev/disk/by-designator/root /run/toplevel
 run0 systemd-nspawn -D /run/toplevel/gnome --bind=/efi --bind=/var/cache/pacman/pkg
 ```
 
-## 9. Update both systems
+## 12. Update both systems
 
 A pacman hook updates the other system after every upgrade, through the
 shared cache. In both systems:
@@ -246,7 +393,7 @@ Inside the container the hook does nothing, so it doesn't loop.
 Flatpaks are installed per home and updated per system, each desktop only
 shows its own apps.
 
-## 10. Search index in GNOME
+## 13. Search index in GNOME
 
 LocalSearch doesn't descend into mount points below `$HOME`, GNOME Music and
 the search don't see the shared folders. After the first GNOME login:
@@ -261,3 +408,13 @@ localsearch reset -s
 
 `$HOME` only non-recursive, otherwise the folders below it are dropped.
 Baloo in KDE indexes the mounts as is.
+
+## 14. When the RAM changes
+
+Btrfs needs the swap file preallocated, so it keeps its size. This rebuilds it
+from `MemTotal`, and the `&&` chain stops before the `rm` if swap is still in
+use:
+
+```bash
+run0 bash -c 'systemctl stop swap-swapfile.swap && rm -f /swap/swapfile && btrfs filesystem mkswapfile --size $(( ($(grep -m1 MemTotal /proc/meminfo | tr -dc 0-9) + 1048575) / 1048576 ))g /swap/swapfile && systemctl start swap-swapfile.swap && swapon --show'
+```
