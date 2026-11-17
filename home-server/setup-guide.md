@@ -222,6 +222,40 @@ sudo swapon --show                            # only /swapfile, 4G
 cat /sys/module/zswap/parameters/compressor   # zstd
 ```
 
+### Reboot on a hung disk
+
+If the USB SSD stops responding, everything that touches the disk blocks
+and nothing gets logged. The watchdog stays quiet because systemd itself
+still runs. With [`files/90-hang-reboot.conf`](files/90-hang-reboot.conf)
+the kernel panics after a task has been stuck for 10 minutes and reboots
+10 s later:
+
+```bash
+sudo install -m644 files/90-hang-reboot.conf /etc/sysctl.d/
+sudo sysctl -p /etc/sysctl.d/90-hang-reboot.conf
+```
+
+Without `hung_task_check_interval_secs` it can take up to 20 minutes.
+
+Crash log across the reboot: add `dtoverlay=ramoops-pi4` under `[all]` in
+`/boot/firmware/config.txt` and reboot. `journalctl -k | grep ramoops`
+should show `Registered ramoops as persistent store backend`. After a
+crash the log is in `/var/lib/systemd/pstore/`.
+
+Test:
+
+```bash
+sudo bash files/hang-test.sh            # DETECTED after ~35 s
+echo c | sudo tee /proc/sysrq-trigger   # crash, reboots by itself
+sudo grep "sysrq triggered crash" /var/lib/systemd/pstore/dmesg-ramoops-*
+```
+
+`hang-test.sh` freezes a loop mount and waits for the hung task warning,
+with panic off and a 30 s timeout. It puts everything back afterwards.
+
+No RTC: until the time sync the journal uses the last saved time, so a
+boot after a crash shows up too early.
+
 Fixed IP: DHCP reservation in the router, nothing on the Pi.
 
 ```bash
