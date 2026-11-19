@@ -5,6 +5,7 @@
 #   ventoy/           at the top
 #   .Trash-*/         at the top, not descended into
 #   .hidden           in every folder
+#   .ventoyignore     in every folder
 # Only names and attributes are touched, no file is read. Run it again
 # after new folders got their .hidden copy:
 #   python3 /run/media/$USER/USB/ventoy/windows-hide.py
@@ -26,8 +27,9 @@ def targets():
     for d, dirs, files in os.walk(root):
         if d == root:
             dirs[:] = [x for x in dirs if not x.startswith(".Trash-")]
-        if ".hidden" in files:
-            yield os.path.join(d, ".hidden")
+        for name in (".hidden", ".ventoyignore"):
+            if name in files:
+                yield os.path.join(d, name)
 
 
 changed = already = failed = 0

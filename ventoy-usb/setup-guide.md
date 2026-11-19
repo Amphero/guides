@@ -138,7 +138,7 @@ echo ventoy >> .hidden
 Dolphin and Nautilus hide every name listed in a folder's `.hidden`, Ctrl+H
 shows them. One file per folder, no wildcards, new folders need a copy.
 
-Windows shows `ventoy`, `.Trash-*` and the `.hidden` files.
+Windows shows `ventoy`, `.Trash-*`, `.hidden` and `.ventoyignore`.
 [`files/windows-hide.py`](files/windows-hide.py) sets the exFAT hidden
 attribute on them, no root needed:
 
