@@ -105,8 +105,9 @@ with the 5 s timeouts the stick boots without a key press.
 
 [`files/debian-update.sh`](files/debian-update.sh) copies the boot menu out of
 the newest Debian ISO on the stick, appends
-`locales=de_DE.UTF-8 keyboard-layouts=de timezone=Europe/Berlin` and points
-Ventoy's `conf_replace` and default image at that ISO.
+`locales=de_DE.UTF-8 keyboard-layouts=de timezone=Europe/Berlin persistence`
+and points Ventoy's `conf_replace`, default image and, once step 9 is
+done, `persistence` at that ISO.
 
 ```bash
 cp files/debian-update.sh /run/media/$USER/USB/ventoy/
@@ -124,7 +125,46 @@ Two things that break the boot if done by hand:
   `(initramfs)` shell.
 - `*` in Ventoy paths matches exactly one character, so use the full ISO name.
 
-## 9. Hide Windows folders on Linux
+## 9. Wi-Fi, eduroam and Tailscale in Debian Live
+
+[`files/debian-persistence.sh`](files/debian-persistence.sh) creates
+`USB/persistence/debian-live.dat`, 1 GiB, ext4 with the label
+`persistence`. Debian Live mounts it at boot and keeps only these folders
+in it:
+
+| Folder | Content |
+|---|---|
+| `/etc/NetworkManager/system-connections` | Wi-Fi profiles of the machine running the script |
+| `/etc/easyroam-certs` | eduroam certificates, if the machine has them |
+| `/usr/local` | `tailscale`, `tailscaled` (static build, not in Debian) |
+| `/etc/systemd/system` | `tailscaled.service`, only the changes |
+| `/var/lib/tailscale` | the Tailscale node |
+
+`/home` and Firefox start fresh on every boot, `SECURE` is not touched.
+Run it on the machine whose networks should go along, then step 8 again
+for the boot parameter and the `ventoy.json` entry:
+
+```bash
+run0 bash files/debian-persistence.sh
+bash /run/media/$USER/USB/ventoy/debian-update.sh
+```
+
+First boot, in Debian Live:
+
+```bash
+sudo tailscale up --accept-routes
+```
+
+Approve the device in the admin console. Without disabling key expiry
+there, the login is due again after 180 days.
+
+Not encrypted: anyone with the stick can read the Wi-Fi passwords, the
+eduroam key and the Tailscale node key. A LUKS image is skipped without a
+prompt, the Debian Live initramfs has no `cryptsetup`
+(`cryptsetup-initramfs` is not on the ISO). live-boot only probes
+unencrypted media, so `SECURE` stays closed.
+
+## 10. Hide Windows folders on Linux
 
 ```bash
 cd /run/media/$USER/USB
@@ -132,13 +172,14 @@ printf '%s\n' 'System Volume Information' '$RECYCLE.BIN' 'desktop.ini' 'Desktop.
   'Thumbs.db' 'autorun.inf' 'AUTORUN.INF' 'FOUND.000' 'FOUND.001' 'FOUND.002' \
   'msdownld.tmp' 'ehthumbs.db' 'ehthumbs_vista.db' 'RECYCLER' 'LOST.DIR' > .hidden
 find . -mindepth 1 -type d -not -path './.Trash-*' -exec cp .hidden {}/ \;
-echo ventoy >> .hidden
+printf '%s\n' ventoy persistence >> .hidden
 ```
 
 Dolphin and Nautilus hide every name listed in a folder's `.hidden`, Ctrl+H
 shows them. One file per folder, no wildcards, new folders need a copy.
 
-Windows shows `ventoy`, `.Trash-*`, `.hidden` and `.ventoyignore`.
+Windows shows `ventoy`, `persistence`, `.Trash-*`, `.hidden` and
+`.ventoyignore`.
 [`files/windows-hide.py`](files/windows-hide.py) sets the exFAT hidden
 attribute on them, no root needed:
 
@@ -150,7 +191,7 @@ python3 /run/media/$USER/USB/ventoy/windows-hide.py
 Run it again after copying `.hidden` into new folders. `--dry-run` only
 lists.
 
-## 10. Check
+## 11. Check
 
 ```bash
 sfdisk -d /dev/sdX

@@ -3,6 +3,7 @@
 # this stick, so Windows Explorer hides them like Dolphin and Nautilus
 # do through .hidden:
 #   ventoy/           at the top
+#   persistence/      at the top
 #   .Trash-*/         at the top, not descended into
 #   .hidden           in every folder
 #   .ventoyignore     in every folder
@@ -22,7 +23,7 @@ dry = "--dry-run" in sys.argv
 
 def targets():
     for name in sorted(os.listdir(root)):
-        if name == "ventoy" or name.startswith(".Trash-"):
+        if name in ("ventoy", "persistence") or name.startswith(".Trash-"):
             yield os.path.join(root, name)
     for d, dirs, files in os.walk(root):
         if d == root:

@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Run after putting a new Debian Live ISO on the stick: rebuilds the German
 # boot menu (ventoy/debian/grub.cfg + live.cfg) from the newest ISO and points
-# ventoy/ventoy.json at it.
+# ventoy/ventoy.json at it, including persistence/debian-live.dat if present.
 
 set -euo pipefail
 
 LABEL=USB
 PARAMS='locales=de_DE.UTF-8 keyboard-layouts=de timezone=Europe/Berlin'
+# debian-live.dat, see debian-persistence.sh. live-boot only probes
+# unencrypted media, SECURE stays closed.
+PARAMS="$PARAMS persistence"
 SUMS_URL=https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/SHA256SUMS
 
 fail() { echo "error: $*" >&2; exit 1; }
@@ -54,10 +57,11 @@ grep -qF "$PARAMS" "$TMP/grub.cfg" && grep -qF "$PARAMS" "$TMP/live.cfg" \
 mkdir -p "$U/ventoy/debian"
 cp "$TMP/grub.cfg" "$TMP/live.cfg" "$U/ventoy/debian/"
 
-J="$U/ventoy/ventoy.json" NAME="$NAME" python3 - <<'EOF'
+J="$U/ventoy/ventoy.json" NAME="$NAME" U="$U" python3 - <<'EOF'
 import json, os
 p = os.environ['J']
 iso = '/ISO/' + os.environ['NAME']
+dat = '/persistence/debian-live.dat'
 j = json.load(open(p)) if os.path.exists(p) else {}
 
 ctl = j.setdefault('control', [])
@@ -73,6 +77,14 @@ j['conf_replace'] = [e for e in j.get('conf_replace', []) if e.get('new') not in
     {'iso': iso, 'org': '/boot/grub/grub.cfg', 'new': '/ventoy/debian/grub.cfg'},
     {'iso': iso, 'org': '/isolinux/live.cfg',  'new': '/ventoy/debian/live.cfg'},
 ]
+
+pers = [e for e in j.get('persistence', []) if e.get('backend') != dat]
+if os.path.exists(os.environ['U'] + dat):
+    pers.append({'image': iso, 'backend': dat})
+if pers:
+    j['persistence'] = pers
+else:
+    j.pop('persistence', None)
 
 with open(p, 'w') as f:
     f.write(json.dumps(j, indent=4) + '\n')
